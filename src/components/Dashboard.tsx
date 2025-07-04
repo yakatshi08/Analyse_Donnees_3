@@ -1,17 +1,18 @@
 import React from 'react';
 import { TrendingUp, Users, Target, UserPlus } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Radar } from 'recharts';
+import { useFinanceStore } from '../store';
 
-interface DashboardProps {
-  isDarkMode: boolean;
-}
-
-const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
+const Dashboard: React.FC = () => {
+  // Récupération du mode sombre ET des données depuis Zustand
+  const { isDarkMode, quarterlyData, kpis } = useFinanceStore();
+  
+  // Transformation des métriques dashboard pour correspondre au format existant
   const kpiData = [
     {
       title: "Chiffre d'affaires",
-      value: "€120,450",
-      change: "+8,2% par rapport au mois dernier",
+      value: "€3.24M",
+      change: "+29.6% par rapport au trimestre dernier",
       icon: TrendingUp,
       color: "text-blue-500",
       positive: true
@@ -34,7 +35,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
     },
     {
       title: "Nouveaux abonnés",
-      value: "+245",
+      value: "+847",
       change: "Campagne marketing en cours",
       icon: UserPlus,
       color: "text-purple-500",
@@ -42,12 +43,13 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
     }
   ];
 
-  const quarterlyData = [
-    { quarter: 'Q1 2024', Revenus: 75000, Coûts: 45000, Profit: 30000 },
-    { quarter: 'Q2 2024', Revenus: 85000, Coûts: 48000, Profit: 37000 },
-    { quarter: 'Q3 2024', Revenus: 95000, Coûts: 52000, Profit: 43000 },
-    { quarter: 'Q4 2024', Revenus: 120000, Coûts: 65000, Profit: 55000 },
-  ];
+  // Transformation des données trimestrielles du store
+  const quarterlyDataDisplay = quarterlyData.map((q, index) => ({
+    quarter: `Q${index + 1} 2024`,
+    Revenus: q.revenu,
+    Coûts: q.couts,
+    Profit: q.profit
+  }));
 
   const radarData = [
     { subject: 'Revenus', A: 100, fullMark: 100 },
@@ -56,6 +58,12 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
     { subject: 'Clients', A: 85, fullMark: 100 },
     { subject: 'Satisfaction', A: 88, fullMark: 100 },
   ];
+
+  // Utilisation des KPIs du store pour la section bancaire
+  const nplKpi = kpis.find(k => k.label === 'NPL Ratio');
+  const cet1Kpi = kpis.find(k => k.label === 'CET1 Ratio');
+  const lcrKpi = kpis.find(k => k.label === 'LCR');
+  const roeKpi = kpis.find(k => k.label === 'ROE');
 
   return (
     <div className="space-y-6">
@@ -101,7 +109,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
             Analyse Trimestrielle 2024
           </h3>
           <ResponsiveContainer width="100%" height={300}>
-            <BarChart data={quarterlyData}>
+            <BarChart data={quarterlyDataDisplay}>
               <CartesianGrid strokeDasharray="3 3" stroke={isDarkMode ? '#374151' : '#e5e7eb'} />
               <XAxis dataKey="quarter" stroke={isDarkMode ? '#9ca3af' : '#6b7280'} fontSize={12} />
               <YAxis stroke={isDarkMode ? '#9ca3af' : '#6b7280'} fontSize={12} />
@@ -159,14 +167,14 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
                 </svg>
               </div>
               <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                2.8%
+                {nplKpi?.value || '3.2%'}
               </div>
             </div>
             <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
               NPL Ratio
             </h3>
             <p className="text-sm text-green-500">
-              -0.3% vs trimestre précédent
+              {nplKpi?.trend ? `${nplKpi.trend}% vs trimestre précédent` : '-0.4% vs trimestre précédent'}
             </p>
           </div>
 
@@ -181,7 +189,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
                 </svg>
               </div>
               <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                15.5%
+                {cet1Kpi?.value || '14.5%'}
               </div>
             </div>
             <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
@@ -203,7 +211,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
                 </svg>
               </div>
               <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                142%
+                {lcrKpi?.value || '135%'}
               </div>
             </div>
             <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
@@ -225,7 +233,7 @@ const Dashboard: React.FC<DashboardProps> = ({ isDarkMode }) => {
                 </svg>
               </div>
               <div className={`text-2xl font-bold ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
-                12.3%
+                {roeKpi?.value || '8.7%'}
               </div>
             </div>
             <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-gray-200' : 'text-gray-700'}`}>
