@@ -6,33 +6,46 @@ export interface ReportData {
   type: string;
   date: string;
   status: string;
-  data: any;
+  content: any;
 }
 
 class ReportService {
   async getReports(): Promise<ReportData[]> {
-    // Données simulées pour l'instant
-    return Promise.resolve([
-      {
-        id: 1,
-        title: "Rapport Mensuel",
-        type: "monthly",
-        date: new Date().toISOString(),
-        status: "completed",
-        data: {}
-      }
-    ]);
+    try {
+      const response = await apiClient.get('/reports/');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching reports:', error);
+      // Données de fallback
+      return [
+        {
+          id: 1,
+          title: "Rapport Mensuel Q1 2024",
+          type: "monthly",
+          date: new Date().toISOString(),
+          status: "completed",
+          content: { revenue: 3240000, growth: 29.6 }
+        },
+        {
+          id: 2,
+          title: "Analyse de Risque",
+          type: "risk",
+          date: new Date().toISOString(),
+          status: "pending",
+          content: { riskLevel: "moderate" }
+        }
+      ];
+    }
   }
 
-  async getReportById(id: number): Promise<ReportData> {
-    return Promise.resolve({
-      id,
-      title: "Rapport",
-      type: "custom",
-      date: new Date().toISOString(),
-      status: "completed",
-      data: {}
-    });
+  async generateReport(type: string, params: any): Promise<ReportData> {
+    try {
+      const response = await apiClient.post('/reports/generate', { type, params });
+      return response.data;
+    } catch (error) {
+      console.error('Error generating report:', error);
+      throw error;
+    }
   }
 }
 

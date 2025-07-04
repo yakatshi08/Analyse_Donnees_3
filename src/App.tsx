@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { 
   Home, BarChart3, Settings, FileText, Users, 
-  Shield, TrendingUp, Moon, Sun, Menu, X, AlertTriangle, Building2,
+  Shield, TrendingUp, Moon, Sun, Menu, X, AlertTriangle, Building2, CreditCard,
   RefreshCw
 } from 'lucide-react';
 import Dashboard from './components/Dashboard';
@@ -11,6 +11,7 @@ import Reports from './components/Reports';
 import Analyses from './components/Analyses';
 import FinancialCharts from './components/FinancialCharts';
 import BankingCore from './components/BankingCore';
+import CreditRisk from './components/CreditRisk';
 import { useFinanceStore } from './store';
 import DataProvider from './components/DataProvider';
 import { useApiData } from './hooks/useApiData';
@@ -66,6 +67,7 @@ function App() {
     { icon: <TrendingUp className="h-5 w-5" />, label: 'Finance', id: 'finance' },
     { icon: <AlertTriangle className="h-5 w-5" />, label: 'Risques', id: 'risks' },
     { icon: <Building2 className="h-5 w-5" />, label: 'Banking Core', id: 'banking' },
+    { icon: <CreditCard className="h-5 w-5" />, label: 'Credit Risk', id: 'creditrisk' },
     { icon: <Users className="h-5 w-5" />, label: 'Clients', id: 'clients' },
     { icon: <Shield className="h-5 w-5" />, label: 'Sécurité', id: 'security' },
     { icon: <Settings className="h-5 w-5" />, label: 'Paramètres', id: 'settings' }
@@ -85,6 +87,8 @@ function App() {
         return <div className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Gestion des Risques</div>;
       case 'banking':
         return <BankingCore />;
+      case 'creditrisk':
+        return <CreditRisk />;
       case 'clients':
         return <div className={`text-2xl ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>Gestion des Clients</div>;
       case 'security':
