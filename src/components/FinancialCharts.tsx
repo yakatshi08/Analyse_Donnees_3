@@ -1,24 +1,22 @@
 import React from 'react';
 import Plot from 'react-plotly.js';
-import { useFinanceStore, useMarketData, useKPIs } from '../store';
+import { useFinanceStore } from '../store';
 
 const FinancialCharts: React.FC = () => {
-  const { isDarkMode, waterfallData, correlationData } = useFinanceStore();
-  const marketData = useMarketData();
-  const kpis = useKPIs();
-  
+  const { isDarkMode, quarterlyData, kpis, waterfallData, correlationData } = useFinanceStore();
+
   // Transformation des données de marché pour le candlestick
   const candlestickData = {
-    x: marketData.map(d => d.date),
-    close: marketData.map(d => d.close),
-    high: marketData.map(d => d.high),
-    low: marketData.map(d => d.low),
-    open: marketData.map(d => d.open)
+    x: quarterlyData.map(d => d.date),
+    close: quarterlyData.map(d => d.close),
+    high: quarterlyData.map(d => d.high),
+    low: quarterlyData.map(d => d.low),
+    open: quarterlyData.map(d => d.open)
   };
 
   // Labels pour la heatmap
   const heatmapLabels = correlationData?.assets || ['CAC 40', 'S&P 500', 'EUR/USD', 'Gold', 'Oil'];
-  
+
   // Matrice de corrélation
   const correlationMatrix = correlationData?.matrix || [
     [1.00, 0.85, -0.60, 0.45, 0.72],
@@ -39,19 +37,13 @@ const FinancialCharts: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <h2 className={`text-2xl font-bold mb-6 ${
-        isDarkMode ? 'text-white' : 'text-gray-900'
-      }`}>
+      <h2 className={`text-2xl font-bold mb-6 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
         Analyses Financières Avancées
       </h2>
 
       {/* Graphique Candlestick */}
-      <div className={`p-6 rounded-xl shadow-lg ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`}>
-        <h3 className={`text-lg font-semibold mb-4 ${
-          isDarkMode ? 'text-white' : 'text-gray-900'
-        }`}>
+      <div className={`p-6 rounded-xl shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Évolution du Cours – CAC 40 ETF (Xtrackers) – du 1er au 12 janvier 2024
         </h3>
         <Plot
@@ -79,7 +71,7 @@ const FinancialCharts: React.FC = () => {
           ]}
           layout={{
             ...plotTheme,
-            xaxis: { 
+            xaxis: {
               gridcolor: gridColor,
               rangeslider: { visible: false },
               tickformat: '%d %b',
@@ -87,7 +79,7 @@ const FinancialCharts: React.FC = () => {
               tickvals: candlestickData.x,
               ticktext: ['01 Jan', '02 Jan', '03 Jan', '04 Jan', '05 Jan', '08 Jan', '09 Jan', '10 Jan', '11 Jan', '12 Jan']
             },
-            yaxis: { 
+            yaxis: {
               gridcolor: gridColor,
               title: 'Prix (€)'
             },
@@ -95,7 +87,7 @@ const FinancialCharts: React.FC = () => {
             margin: { l: 60, r: 40, t: 40, b: 60 },
             hoverlabel: {
               bgcolor: isDarkMode ? 'rgba(55, 65, 81, 0.95)' : 'rgba(229, 231, 235, 0.95)',
-              font: { 
+              font: {
                 size: 14,
                 color: isDarkMode ? '#e5e7eb' : '#1f2937'
               },
@@ -120,7 +112,6 @@ const FinancialCharts: React.FC = () => {
           config={{ displayModeBar: false, responsive: true }}
           className="w-full"
         />
-        {/* Légende des bougies */}
         <div className={`mt-3 text-xs ${isDarkMode ? 'text-gray-400' : 'text-gray-600'} flex justify-center gap-4`}>
           <span>🟩 Bougie verte : hausse du jour</span>
           <span>|</span>
@@ -128,13 +119,9 @@ const FinancialCharts: React.FC = () => {
         </div>
       </div>
 
-      {/* Heatmap de Corrélation */}
-      <div className={`p-6 rounded-xl shadow-lg ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`}>
-        <h3 className={`text-lg font-semibold mb-4 ${
-          isDarkMode ? 'text-white' : 'text-gray-900'
-        }`}>
+      {/* Heatmap */}
+      <div className={`p-6 rounded-xl shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <h3 className={`text-lg font-semibold mb-4 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Matrice de Corrélation des Actifs
         </h3>
         <Plot
@@ -146,7 +133,7 @@ const FinancialCharts: React.FC = () => {
               y: heatmapLabels,
               colorscale: 'RdBu',
               reversescale: true,
-              text: correlationMatrix.map(row => 
+              text: correlationMatrix.map(row =>
                 row.map(val => val.toFixed(2))
               ),
               texttemplate: '%{text}',
@@ -164,43 +151,25 @@ const FinancialCharts: React.FC = () => {
         />
       </div>
 
-      {/* Graphique Waterfall */}
-      <div className={`p-6 rounded-xl shadow-lg ${
-        isDarkMode ? 'bg-gray-800' : 'bg-white'
-      }`}>
-        <h3 className={`text-lg font-semibold mb-2 ${
-          isDarkMode ? 'text-white' : 'text-gray-900'
-        }`}>
+      {/* Waterfall */}
+      <div className={`p-6 rounded-xl shadow-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'}`}>
+        <h3 className={`text-lg font-semibold mb-2 ${isDarkMode ? 'text-white' : 'text-gray-900'}`}>
           Analyse des Revenus – Évolution entre Q4 2023 et Q1 2024
         </h3>
-        
-        {/* Résumé de la variation nette */}
-        <p className={`text-sm mb-1 ${
-          isDarkMode ? 'text-gray-400' : 'text-gray-600'
-        }`}>
+        <p className={`text-sm mb-1 ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
           Variation nette : +€740 000 (+29.6%)
         </p>
-        
-        {/* Texte explicatif */}
-        <p className={`text-sm mb-4 ${
-          isDarkMode ? 'text-gray-500' : 'text-gray-500'
-        }`}>
-          Ce graphique présente l'évolution du revenu entre Q4 2023 et Q1 2024, en tenant compte de l'impact des nouveaux clients, de l'expansion client, du churn et des ajustements de prix.
+        <p className={`text-sm mb-4 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
+          Ce graphique présente l'évolution du revenu entre Q4 2023 et Q1 2024...
         </p>
-        
         <Plot
           data={[
             {
               type: 'waterfall',
               orientation: 'v',
-              measure: waterfallData.map(d => 
-                d.type === 'total' ? 'total' : 'relative'
-              ),
+              measure: waterfallData.map(d => d.type === 'total' ? 'total' : 'relative'),
               x: waterfallData.map(d => d.name),
-              y: waterfallData.map(d => 
-                d.type === 'decrease' ? d.value : 
-                d.type === 'total' ? 0 : d.value
-              ),
+              y: waterfallData.map(d => d.type === 'decrease' ? d.value : d.type === 'total' ? 0 : d.value),
               connector: { line: { color: gridColor } },
               increasing: { marker: { color: '#10b981' } },
               decreasing: { marker: { color: '#ef4444' } },
@@ -209,7 +178,7 @@ const FinancialCharts: React.FC = () => {
               hovertemplate: waterfallData.map((d, i) => {
                 const sign = d.value >= 0 ? '+' : '';
                 const variation = d.type === 'initial' ? '' : `<br>Variation: ${sign}€${Math.abs(d.value).toLocaleString()}`;
-                const totalValue = i === 0 ? d.value : 
+                const totalValue = i === 0 ? d.value :
                                   i === 1 ? 2950000 :
                                   i === 2 ? 3270000 :
                                   i === 3 ? 3090000 :
@@ -222,46 +191,36 @@ const FinancialCharts: React.FC = () => {
           ]}
           layout={{
             ...plotTheme,
-            xaxis: { 
+            xaxis: {
               tickangle: -45,
               gridcolor: gridColor
             },
-            yaxis: { 
+            yaxis: {
               gridcolor: gridColor,
               title: 'Montant (€)',
               tickformat: ',.0f',
-              range: [0, 3800000] // Augmenté pour l'espace des étiquettes
+              range: [0, 3800000]
             },
             height: 450,
-            margin: { l: 80, r: 40, t: 100, b: 120 }, // Plus d'espace en haut
+            margin: { l: 80, r: 40, t: 100, b: 120 },
             showlegend: false,
-            // Création d'un bandeau fixe pour toutes les étiquettes
-            annotations: waterfallData.map((d, i) => {
-              // Position Y fixe pour toutes les étiquettes (bandeau horizontal)
-              const fixedYPosition = 3600000; // Position constante au-dessus du graphique
-              
-              return {
-                x: d.name,
-                y: fixedYPosition,
-                text: `<b>€${Math.abs(d.value).toLocaleString()}</b>`,
-                showarrow: false,
-                font: {
-                  size: 14,
-                  color: '#ffffff',
-                  family: 'system-ui, -apple-system, sans-serif'
-                },
-                bgcolor: 'rgba(17, 17, 17, 0.85)',
-                bordercolor: 'transparent',
-                borderwidth: 0,
-                borderpad: 6,
-                xpad: 8,
-                ypad: 4,
-                xanchor: 'center',
-                yanchor: 'middle', // Centré verticalement
-                // Pas de yshift pour maintenir l'alignement
-              };
-            }),
-            // Ligne de référence optionnelle pour le bandeau
+            annotations: waterfallData.map((d, i) => ({
+              x: d.name,
+              y: 3600000,
+              text: `<b>€${Math.abs(d.value).toLocaleString()}</b>`,
+              showarrow: false,
+              font: {
+                size: 14,
+                color: '#ffffff'
+              },
+              bgcolor: 'rgba(17, 17, 17, 0.85)',
+              bordercolor: 'transparent',
+              borderpad: 6,
+              xpad: 8,
+              ypad: 4,
+              xanchor: 'center',
+              yanchor: 'middle'
+            })),
             shapes: [{
               type: 'line',
               x0: -0.5,
@@ -280,25 +239,17 @@ const FinancialCharts: React.FC = () => {
         />
       </div>
 
-      {/* Indicateurs KPI Bancaires */}
+      {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {kpis.map((kpi, index) => (
-          <div key={index} className={`p-4 rounded-lg ${
-            isDarkMode ? 'bg-gray-800' : 'bg-white'
-          } shadow-lg`}>
-            <h4 className={`text-sm font-medium ${
-              isDarkMode ? 'text-gray-400' : 'text-gray-600'
-            }`}>
+          <div key={index} className={`p-4 rounded-lg ${isDarkMode ? 'bg-gray-800' : 'bg-white'} shadow-lg`}>
+            <h4 className={`text-sm font-medium ${isDarkMode ? 'text-gray-400' : 'text-gray-600'}`}>
               {kpi.label}
             </h4>
-            <p className={`text-2xl font-bold mt-2 ${
-              kpi.status === 'good' ? 'text-green-500' : 'text-yellow-500'
-            }`}>
+            <p className={`text-2xl font-bold mt-2 ${kpi.status === 'good' ? 'text-green-500' : 'text-yellow-500'}`}>
               {kpi.value}
             </p>
-            <p className={`text-xs mt-1 ${
-              isDarkMode ? 'text-gray-500' : 'text-gray-500'
-            }`}>
+            <p className={`text-xs mt-1 ${isDarkMode ? 'text-gray-500' : 'text-gray-500'}`}>
               Cible: {kpi.target}
             </p>
           </div>

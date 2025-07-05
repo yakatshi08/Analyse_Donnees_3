@@ -1,5 +1,6 @@
 from fastapi import APIRouter
 from app.api.v1.endpoints import financial, banking, risk, dashboard, reports, credit_risk  # ✅ Ajout de credit_risk
+from app.api.v1.endpoints import ai_copilot, insurance_core  # ✅ Ajout des nouveaux endpoints
 
 api_router = APIRouter()
 
@@ -40,4 +41,18 @@ api_router.include_router(
     credit_risk.router,
     prefix="/credit-risk",
     tags=["credit-risk"]
+)
+
+# ✅ Ajout du router ai_copilot
+api_router.include_router(
+    ai_copilot.router,
+    prefix="/ai",
+    tags=["AI Copilot"]
+)
+
+# ✅ Ajout du router insurance_core
+api_router.include_router(
+    insurance_core.router,
+    prefix="/insurance",
+    tags=["Insurance"]
 )

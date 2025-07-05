@@ -1,47 +1,42 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Response
+from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-import uvicorn
-from datetime import datetime
-
 from app.api.v1.api import api_router
 from app.core.config import settings
+from pathlib import Path
 
-# Création de l'application FastAPI
 app = FastAPI(
-    title="FinTech Analytics API",
-    description="API Backend pour la plateforme FinTech Analytics",
+    title="PI DatAnalyz API",
     version="1.0.0",
-    docs_url="/api/docs",
-    redoc_url="/api/redoc"
+    openapi_url=f"{settings.api_v1_str}/openapi.json"
 )
 
-# Configuration CORS
+# CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],  # Frontend URLs
+    allow_origins=["http://localhost:5173", "http://localhost:5174"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Route de santé
+# Include API router
+app.include_router(api_router, prefix=settings.api_v1_str)
+
+# Root endpoint
+@app.get("/")
+def root():
+    return {"message": "Welcome to PI DatAnalyz API", "docs": "/docs"}
+
+# Health check endpoint
 @app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
-        "service": "fintech-analytics-api"
-    }
+def health_check():
+    return {"status": "healthy"}
 
-# Inclusion des routes API
-app.include_router(api_router, prefix="/api/v1")
-
-# Point d'entrée principal
-if __name__ == "__main__":
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True
-    )
+# Route pour le favicon
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    favicon_path = Path("static/favicon.ico")
+    if favicon_path.exists():
+        return FileResponse(favicon_path)
+    return Response(content="", status_code=204)

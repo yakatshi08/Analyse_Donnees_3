@@ -2,29 +2,25 @@ from pydantic_settings import BaseSettings
 from typing import Optional
 
 class Settings(BaseSettings):
-    # API Configuration
-    API_V1_STR: str = "/api/v1"
-    PROJECT_NAME: str = "FinTech Analytics"
+    # Backend settings
+    app_name: str = "PI DatAnalyz API"
+    version: str = "1.0.0"
+    api_v1_str: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost/fintech_db"
-    
-    # Redis
-    REDIS_URL: str = "redis://localhost:6379"
+    database_url: Optional[str] = "sqlite:///./app.db"
     
     # Security
-    SECRET_KEY: str = "your-secret-key-here-change-in-production"
-    ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    secret_key: Optional[str] = "your-secret-key-here"
+    algorithm: Optional[str] = "HS256"
+    access_token_expire_minutes: Optional[int] = 30
     
     # CORS
-    BACKEND_CORS_ORIGINS: list = ["http://localhost:5173", "http://localhost:3000"]
-    
-    # WebSocket
-    WS_MESSAGE_QUEUE: str = "redis://localhost:6379/1"
+    backend_cors_origins: list[str] = ["http://localhost:5173", "http://localhost:5174"]
     
     class Config:
         env_file = ".env"
-        case_sensitive = True
+        case_sensitive = False
+        extra = "ignore"  # Ignore les variables VITE_*
 
 settings = Settings()
