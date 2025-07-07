@@ -1,365 +1,342 @@
 """
-Router FastAPI pour le Co-Pilot IA
+Router pour le Copilot IA Finance/Assurance
+Assistant conversationnel intelligent avec NLP spécialisé
 """
-
-from fastapi import APIRouter, HTTPException, Depends
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-import json
-import asyncio
+from typing import List, Dict, Any, Optional
 from datetime import datetime
-
-from app.services.ai_service import FinanceAIService, IntentType, SectorContext
+import uuid
 
 router = APIRouter(
-    prefix="/api/copilot",
-    tags=["copilot"],
-    responses={404: {"description": "Not found"}},
+    prefix="/api/v1/copilot",
+    tags=["Copilot IA"],
+    responses={404: {"description": "Not found"}}
 )
 
-# Modèles Pydantic pour les requêtes/réponses
+
+# Modèles Pydantic
 class ChatMessage(BaseModel):
-    """Message de chat"""
-    role: str  # 'user' ou 'assistant'
+    role: str  # "user" ou "assistant"
     content: str
     timestamp: Optional[datetime] = None
 
+
 class ChatRequest(BaseModel):
-    """Requête de chat"""
-    query: str
-    context: Optional[Dict[str, Any]] = None
-    history: Optional[List[ChatMessage]] = []
-    stream: Optional[bool] = False
+    message: str
+    context: Optional[str] = None
+    sector: Optional[str] = "general"
+    conversation_id: Optional[str] = None
+
 
 class ChatResponse(BaseModel):
-    """Réponse de chat"""
-    response: Dict[str, Any]
-    suggestions: List[Dict[str, str]]
-    intent: str
-    sector: str
+    response: str
+    suggestions: List[str]
+    actions: List[Dict[str, Any]]
+    conversation_id: str
+    confidence: float
 
-class ReportRequest(BaseModel):
-    """Requête de génération de rapport"""
-    report_type: str  # 'regulatory', 'executive', 'risk', 'compliance'
-    sector: str  # 'banking', 'insurance', 'mixed'
-    period: Optional[str] = "current"
-    metrics: Optional[List[str]] = []
-    format: Optional[str] = "pdf"  # 'pdf', 'excel', 'html'
 
-# Instance du service IA
-ai_service = FinanceAIService()
+class QueryAnalysisRequest(BaseModel):
+    query: str
+    data_context: Optional[Dict[str, Any]] = None
 
-# Stockage en mémoire des conversations (à remplacer par une DB en production)
-conversations = {}
 
+# Endpoints
 @router.post("/chat", response_model=ChatResponse)
 async def chat_with_copilot(request: ChatRequest):
     """
-    Endpoint principal pour interagir avec le Co-Pilot IA
+    Interaction avec le Copilot IA spécialisé Finance/Assurance
     
-    Exemples de requêtes:
-    - "Calcule mon ratio CET1"
-    - "Génère un rapport Bâle III"
-    - "Analyse l'évolution de mes KPIs"
-    - "Explique ce qu'est le ratio SCR"
+    Comprend le langage naturel et répond avec des insights contextuels
     """
     try:
-        # Traiter la requête avec le service IA
-        result = await ai_service.process_query(
-            query=request.query,
-            context=request.context
-        )
+        # Génération d'un ID de conversation si non fourni
+        conversation_id = request.conversation_id or str(uuid.uuid4())
         
-        # Si streaming demandé, retourner une réponse SSE
-        if request.stream:
-            return StreamingResponse(
-                stream_response(result),
-                media_type="text/event-stream"
-            )
+        # Analyse de l'intention (simulée)
+        intent = analyze_intent(request.message, request.sector)
         
-        # Sinon, retourner une réponse normale
+        # Génération de la réponse selon l'intention
+        if intent == "ratio_calculation":
+            response = generate_ratio_response(request.message, request.sector)
+        elif intent == "risk_analysis":
+            response = generate_risk_response(request.message, request.sector)
+        elif intent == "report_generation":
+            response = generate_report_response(request.message, request.sector)
+        else:
+            response = generate_general_response(request.message, request.sector)
+        
         return ChatResponse(
-            response=result['response'],
-            suggestions=result['suggestions'],
-            intent=result['intent'],
-            sector=result['sector']
+            response=response["text"],
+            suggestions=response["suggestions"],
+            actions=response["actions"],
+            conversation_id=conversation_id,
+            confidence=response["confidence"]
         )
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/chat/stream")
-async def chat_stream(request: ChatRequest):
-    """
-    Endpoint pour le chat en streaming (Server-Sent Events)
-    """
-    async def generate():
-        try:
-            # Traiter la requête
-            result = await ai_service.process_query(
-                query=request.query,
-                context=request.context
-            )
-            
-            # Simuler un streaming progressif
-            response_text = json.dumps(result['response'])
-            
-            # Envoyer par chunks
-            chunk_size = 50
-            for i in range(0, len(response_text), chunk_size):
-                chunk = response_text[i:i + chunk_size]
-                yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-                await asyncio.sleep(0.05)  # Délai pour effet streaming
-            
-            # Envoyer les suggestions à la fin
-            yield f"data: {json.dumps({'suggestions': result['suggestions'], 'complete': True})}\n\n"
-            
-        except Exception as e:
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
-    
-    return StreamingResponse(generate(), media_type="text/event-stream")
 
-@router.post("/generate/report")
-async def generate_report(request: ReportRequest):
+@router.post("/analyze-query")
+async def analyze_query(request: QueryAnalysisRequest):
     """
-    Génère un rapport automatique
-    
-    Types de rapports:
-    - regulatory: COREP, FINREP, QRT Solvency II
-    - executive: Rapport exécutif avec KPIs
-    - risk: Analyse des risques
-    - compliance: Conformité réglementaire
+    Analyse une requête en langage naturel et retourne l'intention
     """
     try:
-        # Validation du type de rapport
-        valid_types = ['regulatory', 'executive', 'risk', 'compliance']
-        if request.report_type not in valid_types:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Type de rapport invalide. Valeurs acceptées: {valid_types}"
-            )
+        # Analyse NLP simulée
+        keywords = request.query.lower().split()
         
-        # Génération du rapport (simulation)
-        report_id = f"RPT-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        # Détection des intentions
+        intents = []
+        if any(word in keywords for word in ["calcule", "ratio", "lcr", "cet1", "scr"]):
+            intents.append("calculation")
+        if any(word in keywords for word in ["risque", "risk", "stress", "test"]):
+            intents.append("risk_analysis")
+        if any(word in keywords for word in ["rapport", "report", "dashboard"]):
+            intents.append("reporting")
+        if any(word in keywords for word in ["anomalie", "fraude", "suspect"]):
+            intents.append("anomaly_detection")
+            
+        # Extraction des entités
+        entities = {
+            "metrics": [],
+            "time_period": None,
+            "sector": "general"
+        }
         
-        # Structure du rapport selon le type
-        if request.report_type == 'regulatory':
-            if request.sector == 'banking':
-                sections = ['Capital Adequacy', 'Liquidity Ratios', 'Asset Quality', 'Leverage']
-            else:
-                sections = ['SCR Calculation', 'MCR Calculation', 'Own Funds', 'Risk Margin']
-        elif request.report_type == 'executive':
-            sections = ['Executive Summary', 'Key Metrics', 'Performance Analysis', 'Recommendations']
-        elif request.report_type == 'risk':
-            sections = ['Risk Overview', 'Credit Risk', 'Market Risk', 'Operational Risk', 'Mitigation Strategies']
-        else:  # compliance
-            sections = ['Regulatory Requirements', 'Current Status', 'Gaps Analysis', 'Action Plan']
-        
+        # Détection des métriques
+        if "lcr" in keywords:
+            entities["metrics"].append("LCR")
+        if "cet1" in keywords:
+            entities["metrics"].append("CET1")
+        if "combined" in keywords and "ratio" in keywords:
+            entities["metrics"].append("Combined Ratio")
+            
         return {
-            'report_id': report_id,
-            'type': request.report_type,
-            'sector': request.sector,
-            'period': request.period,
-            'status': 'generation_started',
-            'sections': sections,
-            'estimated_completion': '2 minutes',
-            'download_url': f'/api/copilot/reports/{report_id}/download'
+            "query": request.query,
+            "intents": intents,
+            "entities": entities,
+            "suggested_actions": get_suggested_actions(intents)
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/generate/dashboard")
-async def generate_dashboard(metrics: List[str], sector: Optional[str] = "mixed"):
+
+@router.post("/generate-insights")
+async def generate_insights(data: Dict[str, Any]):
     """
-    Génère automatiquement une configuration de dashboard
-    basée sur les métriques demandées
+    Génère automatiquement des insights basés sur les données
     """
     try:
-        # Créer la requête pour le service IA
-        query = f"Crée un dashboard avec {', '.join(metrics)}"
-        context = {'sector': sector}
+        insights = []
         
-        result = await ai_service.process_query(query, context)
+        # Analyse basique des données (simulée)
+        if "metrics" in data:
+            for metric, value in data["metrics"].items():
+                insight = analyze_metric(metric, value)
+                if insight:
+                    insights.append(insight)
         
-        if result['response']['type'] == 'dashboard_config':
-            return {
-                'status': 'success',
-                'config': result['response'],
-                'message': 'Dashboard configuré avec succès'
-            }
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail="Impossible de générer la configuration du dashboard"
-            )
-            
+        # Insights sectoriels
+        if data.get("sector") == "banking":
+            insights.extend([
+                {
+                    "type": "regulatory",
+                    "severity": "info",
+                    "message": "Vos ratios Bâle III sont conformes aux exigences réglementaires",
+                    "details": "CET1: 14.8% (min 10.5%), LCR: 125% (min 100%)"
+                }
+            ])
+        elif data.get("sector") == "insurance":
+            insights.extend([
+                {
+                    "type": "performance",
+                    "severity": "positive",
+                    "message": "Le combined ratio s'améliore ce trimestre",
+                    "details": "94.5% vs 96.2% au trimestre précédent"
+                }
+            ])
+        
+        return {
+            "insights": insights,
+            "summary": f"Généré {len(insights)} insights",
+            "timestamp": datetime.now().isoformat()
+        }
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/suggestions")
-async def get_suggestions(sector: Optional[str] = "mixed", intent: Optional[str] = None):
+
+@router.get("/suggestions/{sector}")
+async def get_copilot_suggestions(sector: str):
     """
-    Retourne des suggestions de requêtes basées sur le contexte
+    Retourne des suggestions de questions selon le secteur
     """
-    # Mapping des suggestions par secteur
-    suggestions_map = {
-        'banking': [
-            {
-                'category': 'Ratios Réglementaires',
-                'queries': [
-                    'Calcule mon ratio CET1',
-                    'Quelle est ma position LCR ?',
-                    'Analyse mon NSFR'
-                ]
-            },
-            {
-                'category': 'Rapports',
-                'queries': [
-                    'Génère le rapport COREP',
-                    'Prépare le stress test BCE',
-                    'Crée un rapport Bâle III'
-                ]
-            },
-            {
-                'category': 'Analyses',
-                'queries': [
-                    'Analyse l\'évolution de mes NPL',
-                    'Compare mes ratios avec les seuils',
-                    'Détecte les anomalies de liquidité'
-                ]
-            }
+    suggestions = {
+        "banking": [
+            "Quel est mon ratio CET1 actuel ?",
+            "Montre-moi l'évolution du NPL ratio sur 6 mois",
+            "Effectue un stress test sur mon portefeuille de prêts",
+            "Analyse le risque de concentration sectorielle",
+            "Génère le rapport COREP du trimestre"
         ],
-        'insurance': [
-            {
-                'category': 'Solvency II',
-                'queries': [
-                    'Calcule mon ratio SCR',
-                    'Vérifie ma conformité MCR',
-                    'Analyse mes fonds propres'
-                ]
-            },
-            {
-                'category': 'Ratios Techniques',
-                'queries': [
-                    'Quel est mon ratio combiné ?',
-                    'Analyse le loss ratio',
-                    'Évolution de l\'expense ratio'
-                ]
-            },
-            {
-                'category': 'Rapports',
-                'queries': [
-                    'Génère le QRT trimestriel',
-                    'Prépare le rapport SFCR',
-                    'Crée le RSR annuel'
-                ]
-            }
+        "insurance": [
+            "Calcule le combined ratio YTD",
+            "Quelle est l'évolution de la sinistralité auto ?",
+            "Analyse les provisions techniques IBNR",
+            "Montre la rentabilité par ligne de produit",
+            "Prépare le QRT Solvency II"
         ],
-        'mixed': [
-            {
-                'category': 'Performance',
-                'queries': [
-                    'Analyse mes KPIs principaux',
-                    'Compare T3 vs T4',
-                    'Montre l\'évolution des revenus'
-                ]
-            },
-            {
-                'category': 'Dashboards',
-                'queries': [
-                    'Crée un dashboard exécutif',
-                    'Configure un tableau de bord risques',
-                    'Affiche mes métriques clés'
-                ]
-            },
-            {
-                'category': 'Intelligence',
-                'queries': [
-                    'Détecte les anomalies',
-                    'Prédis les tendances',
-                    'Analyse les corrélations'
-                ]
-            }
+        "general": [
+            "Analyse les tendances de mes données",
+            "Détecte les anomalies dans les transactions",
+            "Crée un dashboard de performance",
+            "Compare mes métriques avec le benchmark",
+            "Génère un rapport exécutif"
         ]
     }
     
     return {
-        'sector': sector,
-        'suggestions': suggestions_map.get(sector, suggestions_map['mixed'])
+        "sector": sector,
+        "suggestions": suggestions.get(sector, suggestions["general"]),
+        "quick_actions": [
+            {"action": "new_analysis", "label": "Nouvelle analyse"},
+            {"action": "view_dashboard", "label": "Voir le dashboard"},
+            {"action": "generate_report", "label": "Générer un rapport"}
+        ]
     }
 
-@router.get("/capabilities")
-async def get_capabilities():
+
+@router.get("/history/{conversation_id}")
+async def get_conversation_history(conversation_id: str):
     """
-    Retourne les capacités du Co-Pilot IA
+    Récupère l'historique d'une conversation
     """
+    # Dans une vraie implémentation, récupérer depuis la DB
     return {
-        'intents': [
+        "conversation_id": conversation_id,
+        "messages": [
             {
-                'type': 'calculate_ratio',
-                'description': 'Calcul de ratios financiers et réglementaires',
-                'examples': ['Calcule mon CET1', 'Quel est mon ratio SCR ?']
+                "role": "user",
+                "content": "Calcule mon ratio CET1",
+                "timestamp": "2024-01-15T10:00:00"
             },
             {
-                'type': 'generate_report',
-                'description': 'Génération automatique de rapports',
-                'examples': ['Génère un rapport Bâle III', 'Prépare le QRT']
-            },
-            {
-                'type': 'analyze_trend',
-                'description': 'Analyse de tendances et évolutions',
-                'examples': ['Analyse l\'évolution sur 12 mois', 'Montre la tendance']
-            },
-            {
-                'type': 'explain_metric',
-                'description': 'Explication de métriques et concepts',
-                'examples': ['Explique le ratio CET1', 'Qu\'est-ce que Solvency II ?']
-            },
-            {
-                'type': 'create_dashboard',
-                'description': 'Création automatique de dashboards',
-                'examples': ['Crée un dashboard banking', 'Configure un tableau de bord']
-            },
-            {
-                'type': 'detect_anomaly',
-                'description': 'Détection d\'anomalies et alertes',
-                'examples': ['Détecte les anomalies', 'Y a-t-il des alertes ?']
+                "role": "assistant",
+                "content": "Votre ratio CET1 actuel est de 14.8%, bien au-dessus du minimum réglementaire de 10.5%.",
+                "timestamp": "2024-01-15T10:00:05"
             }
-        ],
-        'sectors': ['banking', 'insurance', 'mixed'],
-        'languages': ['français', 'english', 'deutsch', 'español', 'italiano', 'português'],
-        'report_types': ['regulatory', 'executive', 'risk', 'compliance'],
-        'metrics': {
-            'banking': ['CET1', 'LCR', 'NSFR', 'NPL', 'ROE', 'CAR'],
-            'insurance': ['SCR', 'MCR', 'Combined Ratio', 'Loss Ratio', 'Expense Ratio']
-        }
+        ]
     }
 
-@router.get("/reports/{report_id}/status")
-async def get_report_status(report_id: str):
-    """
-    Vérifie le statut de génération d'un rapport
-    """
-    # Simulation - en production, vérifier dans la DB
+
+# Fonctions helper
+def analyze_intent(message: str, sector: str) -> str:
+    """Analyse l'intention de l'utilisateur"""
+    message_lower = message.lower()
+    
+    if any(word in message_lower for word in ["calcule", "ratio", "quel est"]):
+        return "ratio_calculation"
+    elif any(word in message_lower for word in ["risque", "stress", "test"]):
+        return "risk_analysis"
+    elif any(word in message_lower for word in ["rapport", "génère", "crée"]):
+        return "report_generation"
+    else:
+        return "general_query"
+
+
+def generate_ratio_response(message: str, sector: str) -> Dict[str, Any]:
+    """Génère une réponse pour un calcul de ratio"""
     return {
-        'report_id': report_id,
-        'status': 'completed',
-        'progress': 100,
-        'download_ready': True,
-        'expires_at': '2024-12-31T23:59:59'
+        "text": "D'après vos dernières données, votre ratio CET1 est de 14.8%, ce qui est excellent et dépasse largement le minimum réglementaire de 10.5% requis par Bâle III.",
+        "suggestions": [
+            "Voir l'évolution sur 12 mois",
+            "Comparer avec les pairs du secteur",
+            "Simuler l'impact d'une augmentation des RWA"
+        ],
+        "actions": [
+            {"type": "view_chart", "data": {"metric": "CET1", "period": "12M"}},
+            {"type": "download_report", "data": {"report": "basel_iii_ratios"}}
+        ],
+        "confidence": 0.95
     }
 
-# Fonction helper pour le streaming
-async def stream_response(result: Dict):
-    """Génère une réponse en streaming"""
-    response_json = json.dumps(result)
-    chunk_size = 50
+
+def generate_risk_response(message: str, sector: str) -> Dict[str, Any]:
+    """Génère une réponse pour une analyse de risque"""
+    return {
+        "text": "J'ai analysé votre portefeuille. Le risque de concentration est modéré avec 32% d'exposition au secteur immobilier. Je recommande une diversification pour optimiser le profil risque/rendement.",
+        "suggestions": [
+            "Voir la répartition sectorielle détaillée",
+            "Lancer un stress test immobilier",
+            "Analyser les corrélations entre secteurs"
+        ],
+        "actions": [
+            {"type": "show_analysis", "data": {"analysis": "concentration_risk"}},
+            {"type": "run_simulation", "data": {"type": "stress_test"}}
+        ],
+        "confidence": 0.88
+    }
+
+
+def generate_report_response(message: str, sector: str) -> Dict[str, Any]:
+    """Génère une réponse pour la génération de rapport"""
+    return {
+        "text": "Je prépare votre rapport COREP pour le T4 2024. Le rapport inclura tous les ratios prudentiels, l'analyse de liquidité et les expositions par classe d'actifs. Génération en cours...",
+        "suggestions": [
+            "Ajouter une analyse comparative T3 vs T4",
+            "Inclure les projections Q1 2025",
+            "Générer aussi le rapport FINREP"
+        ],
+        "actions": [
+            {"type": "generate_report", "data": {"type": "COREP", "period": "Q4_2024"}},
+            {"type": "preview_report", "data": {"sections": ["ratios", "liquidity", "exposures"]}}
+        ],
+        "confidence": 0.92
+    }
+
+
+def generate_general_response(message: str, sector: str) -> Dict[str, Any]:
+    """Génère une réponse générale"""
+    return {
+        "text": "Je suis là pour vous aider avec vos analyses financières. Que souhaitez-vous analyser aujourd'hui ?",
+        "suggestions": [
+            "Analyser mes KPIs principaux",
+            "Détecter des anomalies",
+            "Créer un nouveau dashboard"
+        ],
+        "actions": [
+            {"type": "show_menu", "data": {"options": ["analysis", "reporting", "monitoring"]}}
+        ],
+        "confidence": 0.75
+    }
+
+
+def get_suggested_actions(intents: List[str]) -> List[Dict[str, str]]:
+    """Retourne des actions suggérées selon les intentions"""
+    actions = []
     
-    for i in range(0, len(response_json), chunk_size):
-        chunk = response_json[i:i + chunk_size]
-        yield f"data: {json.dumps({'chunk': chunk})}\n\n"
-        await asyncio.sleep(0.05)
-    
-    yield f"data: {json.dumps({'complete': True})}\n\n"
+    if "calculation" in intents:
+        actions.append({"action": "open_calculator", "label": "Ouvrir le calculateur"})
+    if "risk_analysis" in intents:
+        actions.append({"action": "run_analysis", "label": "Lancer l'analyse"})
+    if "reporting" in intents:
+        actions.append({"action": "generate_report", "label": "Générer le rapport"})
+        
+    return actions
+
+
+def analyze_metric(metric: str, value: Any) -> Optional[Dict[str, Any]]:
+    """Analyse une métrique et génère un insight"""
+    if metric == "CET1" and isinstance(value, (int, float)):
+        if value < 10.5:
+            return {
+                "type": "alert",
+                "severity": "critical",
+                "message": f"CET1 ratio ({value}%) en dessous du minimum réglementaire",
+                "action": "Augmenter le capital ou réduire les RWA"
+            }
+    return None

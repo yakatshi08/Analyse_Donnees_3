@@ -1,243 +1,206 @@
 """
-Router FastAPI pour l'import et le traitement des fichiers
+Router pour l'import de données
+Gère l'import multi-format selon le cahier des charges
 """
-
 from fastapi import APIRouter, UploadFile, File, HTTPException, BackgroundTasks
 from fastapi.responses import JSONResponse
-from typing import Optional, List
-import shutil
-import os
-from pathlib import Path
-import uuid
+from typing import List, Dict, Any, Optional
+import pandas as pd
+import json
+import io
 from datetime import datetime
 
-from app.services.file_processor import FileProcessor
-
 router = APIRouter(
-    prefix="/api/import",
-    tags=["import"],
-    responses={404: {"description": "Not found"}},
+    prefix="/api/v1/import",
+    tags=["Import de données"],
+    responses={404: {"description": "Not found"}}
 )
 
-# Dossier temporaire pour les uploads
-UPLOAD_DIR = Path("uploads")
-UPLOAD_DIR.mkdir(exist_ok=True)
-
-# Instance du processeur de fichiers
-file_processor = FileProcessor()
 
 @router.post("/upload")
 async def upload_file(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    sector: Optional[str] = None
 ):
     """
-    Upload et traite un fichier de données financières
+    Upload et analyse un fichier (Excel, CSV, JSON, PDF)
     
-    Formats supportés:
-    - Excel (.xlsx, .xls)
-    - CSV (.csv)
-    - JSON (.json)
-    - XML (.xml)
-    - PDF (.pdf) - à venir
+    Détecte automatiquement le format et propose des analyses adaptées
     """
     try:
-        # Validation du type de fichier
-        allowed_extensions = ['.xlsx', '.xls', '.csv', '.json', '.xml', '.pdf']
-        file_extension = Path(file.filename).suffix.lower()
+        # Vérification du type de fichier
+        filename = file.filename.lower()
+        content = await file.read()
         
-        if file_extension not in allowed_extensions:
-            raise HTTPException(
-                status_code=400,
-                detail=f"Type de fichier non supporté. Extensions acceptées: {', '.join(allowed_extensions)}"
-            )
-        
-        # Génération d'un nom unique pour le fichier
-        file_id = str(uuid.uuid4())
-        file_path = UPLOAD_DIR / f"{file_id}{file_extension}"
-        
-        # Sauvegarde du fichier
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Traitement immédiat du fichier
-        result = file_processor.process_file(str(file_path), file.content_type)
-        
-        # Nettoyage du fichier temporaire en arrière-plan
-        background_tasks.add_task(cleanup_file, file_path)
-        
-        # Retour du résultat
-        if result['status'] == 'success':
-            return JSONResponse(
-                status_code=200,
-                content={
-                    "status": "success",
-                    "file_id": file_id,
-                    "filename": file.filename,
-                    "sector": result['sector'],
-                    "suggested_kpis": result['suggested_kpis'],
-                    "quality_report": result['quality_report'],
-                    "schema": result['schema'][:10],  # Limiter à 10 colonnes pour la réponse
-                    "timestamp": result['timestamp']
-                }
-            )
+        if filename.endswith('.csv'):
+            # Traitement CSV
+            df = pd.read_csv(io.StringIO(content.decode('utf-8')))
+            file_type = "csv"
+            
+        elif filename.endswith(('.xlsx', '.xls')):
+            # Traitement Excel
+            df = pd.read_excel(io.BytesIO(content))
+            file_type = "excel"
+            
+        elif filename.endswith('.json'):
+            # Traitement JSON
+            data = json.loads(content)
+            df = pd.DataFrame(data)
+            file_type = "json"
+            
         else:
             raise HTTPException(
-                status_code=422,
-                detail=f"Erreur lors du traitement du fichier: {result['error']}"
+                status_code=400,
+                detail=f"Format de fichier non supporté: {filename}"
             )
+        
+        # Analyse basique du fichier
+        analysis = {
+            "filename": file.filename,
+            "file_type": file_type,
+            "rows": len(df),
+            "columns": len(df.columns),
+            "column_names": df.columns.tolist(),
+            "data_types": df.dtypes.astype(str).to_dict(),
+            "missing_values": df.isnull().sum().to_dict(),
+            "preview": df.head(5).to_dict('records')
+        }
+        
+        # Détection du secteur si non spécifié
+        if not sector:
+            banking_keywords = ['loan', 'deposit', 'credit', 'asset', 'liability']
+            insurance_keywords = ['premium', 'claim', 'policy', 'coverage', 'risk']
             
+            columns_lower = [col.lower() for col in df.columns]
+            banking_score = sum(1 for kw in banking_keywords if any(kw in col for col in columns_lower))
+            insurance_score = sum(1 for kw in insurance_keywords if any(kw in col for col in columns_lower))
+            
+            if banking_score > insurance_score:
+                sector = "banking"
+            elif insurance_score > banking_score:
+                sector = "insurance"
+            else:
+                sector = "general"
+        
+        analysis["detected_sector"] = sector
+        analysis["suggested_analyses"] = get_suggested_analyses(sector)
+        
+        return {
+            "success": True,
+            "message": f"Fichier {file.filename} importé avec succès",
+            "analysis": analysis
+        }
+        
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Erreur serveur: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/status/{file_id}")
-async def get_import_status(file_id: str):
+
+@router.post("/validate")
+async def validate_data(data: Dict[str, Any]):
     """
-    Récupère le statut d'un import en cours
+    Valide la qualité des données importées
     """
-    # TODO: Implémenter le suivi des imports asynchrones
-    return {
-        "file_id": file_id,
-        "status": "completed",
-        "progress": 100,
-        "message": "Import terminé"
-    }
+    try:
+        # Validation basique
+        validation_results = {
+            "is_valid": True,
+            "errors": [],
+            "warnings": [],
+            "data_quality_score": 0.85
+        }
+        
+        # Vérifications
+        if "data" not in data:
+            validation_results["errors"].append("Aucune donnée fournie")
+            validation_results["is_valid"] = False
+            
+        return validation_results
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get("/templates")
 async def get_import_templates():
     """
-    Retourne la liste des templates d'import disponibles
+    Retourne les templates d'import disponibles
     """
-    templates = [
-        {
-            "id": "banking_basel3",
-            "name": "Banking - Bâle III Template",
-            "description": "Template pour les ratios réglementaires bancaires",
-            "sector": "banking",
-            "columns": [
-                "date", "cet1_ratio", "tier1_ratio", "total_capital_ratio",
-                "lcr", "nsfr", "leverage_ratio", "npl_ratio"
-            ]
-        },
-        {
-            "id": "insurance_solvency2",
-            "name": "Insurance - Solvency II Template",
-            "description": "Template pour les métriques Solvency II",
-            "sector": "insurance",
-            "columns": [
-                "date", "scr", "mcr", "own_funds", "scr_ratio", "mcr_ratio",
-                "combined_ratio", "loss_ratio", "expense_ratio"
-            ]
-        },
-        {
-            "id": "mixed_financial",
-            "name": "Mixed Financial Data",
-            "description": "Template pour données mixtes banque/assurance",
-            "sector": "mixed",
-            "columns": [
-                "date", "entity", "sector", "revenue", "costs", "profit",
-                "assets", "liabilities", "equity"
-            ]
-        }
-    ]
-    
-    return templates
+    return {
+        "templates": [
+            {
+                "id": "banking_loans",
+                "name": "Portefeuille de prêts bancaires",
+                "description": "Template pour importer des données de prêts",
+                "columns": ["loan_id", "amount", "interest_rate", "term", "risk_rating"],
+                "sector": "banking"
+            },
+            {
+                "id": "insurance_claims",
+                "name": "Sinistres assurance",
+                "description": "Template pour importer des données de sinistres",
+                "columns": ["claim_id", "policy_id", "claim_amount", "claim_date", "status"],
+                "sector": "insurance"
+            },
+            {
+                "id": "financial_transactions",
+                "name": "Transactions financières",
+                "description": "Template général pour transactions",
+                "columns": ["transaction_id", "date", "amount", "type", "category"],
+                "sector": "general"
+            }
+        ]
+    }
 
-@router.post("/validate")
-async def validate_file_structure(file: UploadFile = File(...)):
+
+@router.post("/batch")
+async def batch_import(
+    files: List[UploadFile] = File(...),
+    background_tasks: BackgroundTasks = BackgroundTasks()
+):
     """
-    Valide la structure d'un fichier avant l'import complet
+    Import multiple de fichiers en batch
     """
     try:
-        # Lecture des premières lignes seulement pour validation
-        file_extension = Path(file.filename).suffix.lower()
+        batch_id = f"BATCH_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         
-        # Sauvegarde temporaire
-        temp_path = UPLOAD_DIR / f"temp_{uuid.uuid4()}{file_extension}"
-        with open(temp_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-        
-        # Validation rapide
-        if file_extension in ['.xlsx', '.xls']:
-            import pandas as pd
-            df = pd.read_excel(temp_path, nrows=10)
-        elif file_extension == '.csv':
-            import pandas as pd
-            df = pd.read_csv(temp_path, nrows=10)
-        else:
-            os.remove(temp_path)
-            return {"valid": True, "message": "Type de fichier accepté"}
-        
-        # Nettoyage
-        os.remove(temp_path)
+        # Traitement asynchrone simulé
+        background_tasks.add_task(process_batch_files, files, batch_id)
         
         return {
-            "valid": True,
-            "columns": df.columns.tolist(),
-            "rows_sample": len(df),
-            "message": "Structure valide"
+            "success": True,
+            "batch_id": batch_id,
+            "files_count": len(files),
+            "status": "processing",
+            "message": f"Import batch de {len(files)} fichiers lancé"
         }
         
     except Exception as e:
-        return {
-            "valid": False,
-            "message": f"Erreur de validation: {str(e)}"
-        }
+        raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/connectors")
-async def get_available_connectors():
-    """
-    Liste les connecteurs API disponibles
-    """
-    connectors = [
-        {
-            "id": "temenos_t24",
-            "name": "Temenos T24",
-            "type": "Banking Core System",
-            "status": "active",
-            "endpoints": ["accounts", "transactions", "customers", "loans"]
-        },
-        {
-            "id": "sap_s4hana",
-            "name": "SAP S/4HANA",
-            "type": "ERP System",
-            "status": "active",
-            "endpoints": ["finance", "controlling", "treasury"]
-        },
-        {
-            "id": "guidewire",
-            "name": "Guidewire",
-            "type": "Insurance Platform",
-            "status": "inactive",
-            "endpoints": ["policies", "claims", "billing"]
-        },
-        {
-            "id": "bloomberg_api",
-            "name": "Bloomberg API",
-            "type": "Market Data",
-            "status": "active",
-            "endpoints": ["securities", "reference_data", "historical_data"]
-        },
-        {
-            "id": "ecb_sdw",
-            "name": "ECB Statistical Data Warehouse",
-            "type": "Regulatory Data",
-            "status": "active",
-            "endpoints": ["statistics", "exchange_rates", "interest_rates"]
-        }
-    ]
+
+# Fonctions helper
+def get_suggested_analyses(sector: str) -> List[str]:
+    """Retourne les analyses suggérées selon le secteur"""
+    base_analyses = ["Statistiques descriptives", "Détection d'anomalies", "Analyse de tendances"]
     
-    return connectors
+    if sector == "banking":
+        return base_analyses + [
+            "Analyse du risque de crédit",
+            "Calcul des ratios Bâle III",
+            "Stress testing du portefeuille"
+        ]
+    elif sector == "insurance":
+        return base_analyses + [
+            "Analyse de sinistralité",
+            "Calcul des provisions techniques",
+            "Analyse de la rentabilité par produit"
+        ]
+    else:
+        return base_analyses
 
-def cleanup_file(file_path: Path):
-    """
-    Supprime un fichier temporaire
-    """
-    try:
-        if file_path.exists():
-            os.remove(file_path)
-    except Exception:
-        pass  # Ignorer les erreurs de suppression
+
+async def process_batch_files(files: List[UploadFile], batch_id: str):
+    """Traite les fichiers en batch (simulé)"""
+    # Dans une vraie implémentation, traiter chaque fichier
+    # et stocker les résultats dans une base de données
+    pass

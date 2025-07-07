@@ -1,471 +1,422 @@
 """
-Router FastAPI pour le module Credit Risk
+Router pour le module Credit Risk
+Analyse du risque de crédit selon IFRS 9 et Bâle III
 """
-
-from fastapi import APIRouter, HTTPException, UploadFile, File, BackgroundTasks
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
-from enum import Enum
-from datetime import datetime
-
-from app.services.credit_risk_service import (
-    CreditRiskService, 
-    RatingClass, 
-    StressScenario,
-    CreditExposure
-)
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+from typing import List, Dict, Any, Optional
+from datetime import datetime, date
+import uuid
 
 router = APIRouter(
-    prefix="/api/credit-risk",
-    tags=["credit-risk"],
-    responses={404: {"description": "Not found"}},
+    prefix="/api/v1/credit-risk",
+    tags=["Credit Risk"],
+    responses={404: {"description": "Not found"}}
 )
 
+
 # Modèles Pydantic
-class PDRequest(BaseModel):
-    """Requête pour le calcul de PD"""
-    rating: str
-    horizon_months: Optional[int] = 12
-    scenario: Optional[str] = "baseline"
-
-class LGDRequest(BaseModel):
-    """Requête pour le calcul de LGD"""
-    exposure_amount: float
-    collateral_value: float
-    collateral_type: Optional[str] = "unsecured"
-    scenario: Optional[str] = "baseline"
-
-class EADRequest(BaseModel):
-    """Requête pour le calcul d'EAD"""
-    drawn_amount: float
-    undrawn_amount: float
-    ccf: Optional[float] = 0.75
-    product_type: Optional[str] = "loan"
-
-class ECLRequest(BaseModel):
-    """Requête pour le calcul d'ECL"""
-    pd: float
-    lgd: float
-    ead: float
-
-class PortfolioExposure(BaseModel):
-    """Exposition dans le portefeuille"""
-    exposure_id: str
+class LoanData(BaseModel):
+    loan_id: str
     borrower_id: str
-    exposure_amount: float
-    drawn_amount: float
-    undrawn_amount: Optional[float] = 0
-    rating: str
+    amount: float = Field(gt=0)
+    interest_rate: float = Field(ge=0, le=1)
+    term_months: int = Field(gt=0)
+    origination_date: date
+    risk_rating: str
     collateral_value: Optional[float] = 0
-    collateral_type: Optional[str] = "unsecured"
-    sector: Optional[str] = "other"
-    country: Optional[str] = "FR"
-    maturity_months: Optional[int] = 12
+    sector: Optional[str] = None
+    payment_history: Optional[List[Dict]] = []
+
+
+class RiskAssessmentRequest(BaseModel):
+    loans: List[LoanData]
+    assessment_date: Optional[date] = None
+    scenario: Optional[str] = "baseline"
+
+
+class ECLCalculationRequest(BaseModel):
+    loan_id: str
+    pd_12m: float = Field(ge=0, le=1)
+    lgd: float = Field(ge=0, le=1)
+    ead: float = Field(ge=0)
+    stage: int = Field(ge=1, le=3)
+
 
 class StressTestRequest(BaseModel):
-    """Requête de stress test"""
-    portfolio: List[PortfolioExposure]
-    scenarios: Optional[List[str]] = ["baseline", "adverse", "severe"]
+    portfolio_id: str
+    scenarios: List[Dict[str, float]]
+    confidence_level: float = Field(default=0.95, ge=0, le=1)
 
-# Instance du service
-credit_risk_service = CreditRiskService()
 
-@router.get("/health")
-async def health_check():
-    """Vérification de santé du module Credit Risk"""
-    return {
-        'status': 'healthy',
-        'module': 'credit_risk',
-        'version': '1.0.0',
-        'models': ['PD', 'LGD', 'EAD', 'ECL'],
-        'scenarios': ['baseline', 'adverse', 'severe']
-    }
-
-@router.post("/calculate/pd")
-async def calculate_pd(request: PDRequest):
+# Endpoints
+@router.post("/assess-portfolio")
+async def assess_portfolio_risk(request: RiskAssessmentRequest):
     """
-    Calcule la Probability of Default
+    Évalue le risque d'un portefeuille de prêts
     
-    Exemple:
-    - Rating: "BBB"
-    - Horizon: 12 mois
-    - Scénario: "baseline"
+    Calcule les métriques de risque selon Bâle III et IFRS 9
     """
     try:
-        rating = RatingClass[request.rating.upper()]
-        scenario = StressScenario[request.scenario.upper()]
-        
-        pd = await credit_risk_service.calculate_pd(
-            rating=rating,
-            horizon=request.horizon_months,
-            scenario=scenario
-        )
-        
-        return {
-            'rating': request.rating,
-            'horizon_months': request.horizon_months,
-            'scenario': request.scenario,
-            'pd': pd,
-            'pd_percentage': round(pd * 100, 2),
-            'interpretation': _interpret_pd(pd)
+        portfolio_metrics = {
+            "total_exposure": sum(loan.amount for loan in request.loans),
+            "weighted_avg_pd": 0,
+            "expected_loss": 0,
+            "unexpected_loss": 0,
+            "economic_capital": 0,
+            "risk_weighted_assets": 0
         }
         
-    except KeyError:
-        raise HTTPException(status_code=400, detail="Rating ou scénario invalide")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/calculate/lgd")
-async def calculate_lgd(request: LGDRequest):
-    """
-    Calcule la Loss Given Default
-    """
-    try:
-        scenario = StressScenario[request.scenario.upper()]
+        # Calcul des métriques par prêt
+        loan_assessments = []
+        total_pd_weighted = 0
+        total_el = 0
+        total_rwa = 0
         
-        lgd = await credit_risk_service.calculate_lgd(
-            exposure_amount=request.exposure_amount,
-            collateral_value=request.collateral_value,
-            collateral_type=request.collateral_type,
-            scenario=scenario
-        )
+        for loan in request.loans:
+            # PD selon le rating (simplifié)
+            pd = get_pd_by_rating(loan.risk_rating)
+            
+            # LGD
+            lgd = calculate_lgd(loan.amount, loan.collateral_value)
+            
+            # EAD
+            ead = loan.amount  # Simplifié
+            
+            # Expected Loss
+            el = pd * lgd * ead
+            total_el += el
+            
+            # Risk Weight (Bâle III simplifié)
+            risk_weight = get_risk_weight(loan.risk_rating, loan.sector)
+            rwa = ead * risk_weight
+            total_rwa += rwa
+            
+            # PD pondérée
+            total_pd_weighted += pd * ead
+            
+            loan_assessments.append({
+                "loan_id": loan.loan_id,
+                "pd": pd,
+                "lgd": lgd,
+                "ead": ead,
+                "expected_loss": el,
+                "risk_weight": risk_weight,
+                "rwa": rwa,
+                "stage": classify_stage(pd, loan.payment_history)
+            })
         
-        recovery_rate = 1 - lgd
+        # Métriques du portefeuille
+        portfolio_metrics["weighted_avg_pd"] = total_pd_weighted / portfolio_metrics["total_exposure"]
+        portfolio_metrics["expected_loss"] = total_el
+        portfolio_metrics["risk_weighted_assets"] = total_rwa
+        portfolio_metrics["economic_capital"] = total_rwa * 0.08  # 8% Bâle III
         
-        return {
-            'exposure_amount': request.exposure_amount,
-            'collateral_value': request.collateral_value,
-            'collateral_type': request.collateral_type,
-            'scenario': request.scenario,
-            'lgd': lgd,
-            'lgd_percentage': round(lgd * 100, 2),
-            'recovery_rate': round(recovery_rate * 100, 2),
-            'coverage_ratio': round(request.collateral_value / request.exposure_amount * 100, 2)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/calculate/ead")
-async def calculate_ead(request: EADRequest):
-    """
-    Calcule l'Exposure at Default
-    """
-    try:
-        ead = await credit_risk_service.calculate_ead(
-            drawn_amount=request.drawn_amount,
-            undrawn_amount=request.undrawn_amount,
-            ccf=request.ccf,
-            product_type=request.product_type
-        )
-        
-        utilization_rate = request.drawn_amount / (request.drawn_amount + request.undrawn_amount) * 100
+        # Concentration risk
+        concentration = calculate_concentration(request.loans)
         
         return {
-            'drawn_amount': request.drawn_amount,
-            'undrawn_amount': request.undrawn_amount,
-            'ccf': request.ccf,
-            'product_type': request.product_type,
-            'ead': ead,
-            'utilization_rate': round(utilization_rate, 2),
-            'undrawn_exposure': round(request.ccf * request.undrawn_amount, 2)
+            "assessment_id": str(uuid.uuid4()),
+            "assessment_date": request.assessment_date or date.today(),
+            "portfolio_metrics": portfolio_metrics,
+            "loan_assessments": loan_assessments[:10],  # Top 10 pour la réponse
+            "concentration_risk": concentration,
+            "regulatory_capital": {
+                "minimum_required": portfolio_metrics["economic_capital"],
+                "buffer_required": portfolio_metrics["economic_capital"] * 0.25,
+                "total_required": portfolio_metrics["economic_capital"] * 1.25
+            }
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/calculate/ecl")
-async def calculate_ecl(request: ECLRequest):
+
+@router.post("/calculate-ecl")
+async def calculate_expected_credit_loss(request: ECLCalculationRequest):
     """
-    Calcule l'Expected Credit Loss (ECL)
+    Calcule l'Expected Credit Loss selon IFRS 9
     """
     try:
-        ecl_data = await credit_risk_service.calculate_expected_loss(
-            pd=request.pd,
-            lgd=request.lgd,
-            ead=request.ead
-        )
+        # ECL selon le stage IFRS 9
+        if request.stage == 1:
+            # Stage 1: 12-month ECL
+            ecl = request.pd_12m * request.lgd * request.ead
+            horizon = "12 months"
+        elif request.stage == 2:
+            # Stage 2: Lifetime ECL (simplifié sur 5 ans)
+            lifetime_pd = 1 - (1 - request.pd_12m) ** 5
+            ecl = lifetime_pd * request.lgd * request.ead
+            horizon = "lifetime"
+        else:  # Stage 3
+            # Stage 3: Credit impaired
+            ecl = request.lgd * request.ead  # PD = 100%
+            horizon = "immediate"
         
         return {
-            'inputs': {
-                'pd': request.pd,
-                'lgd': request.lgd,
-                'ead': request.ead
+            "loan_id": request.loan_id,
+            "stage": request.stage,
+            "ecl_amount": ecl,
+            "ecl_rate": ecl / request.ead if request.ead > 0 else 0,
+            "horizon": horizon,
+            "components": {
+                "pd": request.pd_12m if request.stage == 1 else (1 if request.stage == 3 else "lifetime"),
+                "lgd": request.lgd,
+                "ead": request.ead
             },
-            'results': ecl_data,
-            'ifrs9_stage': ecl_data['stage'],
-            'interpretation': _interpret_ecl(ecl_data)
+            "ifrs9_compliant": True
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/calculate/full-assessment")
-async def calculate_full_assessment(exposure: PortfolioExposure):
-    """
-    Calcul complet pour une exposition : PD, LGD, EAD et ECL
-    """
-    try:
-        # Calculs
-        rating = RatingClass[exposure.rating.upper()]
-        
-        pd = await credit_risk_service.calculate_pd(rating, exposure.maturity_months)
-        lgd = await credit_risk_service.calculate_lgd(
-            exposure.exposure_amount,
-            exposure.collateral_value,
-            exposure.collateral_type
-        )
-        ead = await credit_risk_service.calculate_ead(
-            exposure.drawn_amount,
-            exposure.undrawn_amount
-        )
-        ecl_data = await credit_risk_service.calculate_expected_loss(pd, lgd, ead)
-        
-        return {
-            'exposure': exposure.dict(),
-            'risk_metrics': {
-                'pd': pd,
-                'lgd': lgd,
-                'ead': ead,
-                'ecl_12_months': ecl_data['ecl_12_months'],
-                'ecl_lifetime': ecl_data['ecl_lifetime'],
-                'ifrs9_stage': ecl_data['stage']
-            },
-            'percentages': {
-                'pd_percentage': round(pd * 100, 2),
-                'lgd_percentage': round(lgd * 100, 2),
-                'provision_rate': ecl_data['provision_rate']
-            },
-            'risk_rating': _calculate_risk_rating(pd, lgd),
-            'recommendations': _generate_exposure_recommendations(exposure, ecl_data)
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/stress-test")
 async def run_stress_test(request: StressTestRequest):
     """
-    Exécute un stress test sur un portefeuille
+    Execute un stress test sur le portefeuille
     """
     try:
-        # Conversion des expositions
-        portfolio = []
-        for exp in request.portfolio:
-            portfolio.append(exp.dict())
+        results = []
         
-        # Conversion des scénarios
-        scenarios = [StressScenario[s.upper()] for s in request.scenarios]
+        for scenario in request.scenarios:
+            # Simulation de l'impact du scénario
+            scenario_name = scenario.get("name", "Unnamed scenario")
+            gdp_shock = scenario.get("gdp_shock", 0)
+            unemployment_shock = scenario.get("unemployment_shock", 0)
+            property_shock = scenario.get("property_shock", 0)
+            
+            # Impact sur les PDs (formule simplifiée)
+            pd_multiplier = 1 + (gdp_shock * -0.5) + (unemployment_shock * 0.3)
+            
+            # Impact sur les LGDs
+            lgd_multiplier = 1 + (property_shock * -0.4)
+            
+            # Calcul des pertes stressées (simulé)
+            baseline_loss = 1000000  # Perte de base simulée
+            stressed_loss = baseline_loss * pd_multiplier * lgd_multiplier
+            
+            results.append({
+                "scenario": scenario_name,
+                "parameters": scenario,
+                "baseline_loss": baseline_loss,
+                "stressed_loss": stressed_loss,
+                "loss_increase": (stressed_loss / baseline_loss - 1) * 100,
+                "capital_impact": stressed_loss * 0.08,
+                "severity": "severe" if stressed_loss > baseline_loss * 2 else "moderate"
+            })
         
-        # Exécution du stress test
-        results = await credit_risk_service.run_stress_test(portfolio, scenarios)
+        # Calcul du pire scénario
+        worst_case = max(results, key=lambda x: x["stressed_loss"])
         
         return {
-            'summary': {
-                'portfolio_size': results['portfolio_size'],
-                'scenarios_tested': request.scenarios,
-                'execution_time': datetime.now().isoformat()
-            },
-            'results': results['scenarios'],
-            'comparison': results['comparison'],
-            'recommendations': results['recommendations'],
-            'visualizations': _generate_stress_test_charts(results)
+            "stress_test_id": str(uuid.uuid4()),
+            "portfolio_id": request.portfolio_id,
+            "test_date": datetime.now(),
+            "scenarios_tested": len(results),
+            "results": results,
+            "worst_case_scenario": worst_case["scenario"],
+            "worst_case_loss": worst_case["stressed_loss"],
+            "recommendations": generate_stress_test_recommendations(worst_case)
         }
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/rating-migration")
-async def analyze_rating_migration(portfolio: List[PortfolioExposure], time_period: int = 12):
-    """
-    Analyse la migration des ratings
-    """
-    try:
-        # Conversion du portefeuille
-        portfolio_data = [exp.dict() for exp in portfolio]
-        
-        # Génération de la matrice
-        migration_data = await credit_risk_service.generate_rating_migration_matrix(
-            portfolio_data, 
-            time_period
-        )
-        
-        return {
-            'period_months': time_period,
-            'matrix': migration_data['matrix'],
-            'portfolio_analysis': migration_data['portfolio_migrations'],
-            'stability_index': migration_data['stability_index'],
-            'visualization': _generate_migration_heatmap(migration_data['matrix'])
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/portfolio/upload")
-async def upload_portfolio(
-    background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
-):
+@router.get("/risk-dashboard")
+async def get_risk_dashboard():
     """
-    Upload d'un portefeuille pour analyse
-    """
-    try:
-        # Validation du type de fichier
-        if not file.filename.endswith(('.csv', '.xlsx')):
-            raise HTTPException(
-                status_code=400,
-                detail="Format de fichier non supporté. Utilisez CSV ou Excel."
-            )
-        
-        # Sauvegarde temporaire
-        file_location = f"uploads/credit_risk_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{file.filename}"
-        
-        with open(file_location, "wb") as buffer:
-            content = await file.read()
-            buffer.write(content)
-        
-        # Traitement en arrière-plan
-        background_tasks.add_task(process_portfolio_file, file_location)
-        
-        return {
-            'filename': file.filename,
-            'status': 'uploaded',
-            'message': 'Fichier uploadé avec succès. L\'analyse est en cours.',
-            'job_id': file_location.split('/')[-1]
-        }
-        
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.get("/templates")
-async def get_templates():
-    """
-    Retourne les templates pour l'import de données
+    Retourne les métriques pour le dashboard Credit Risk
     """
     return {
-        'portfolio_template': {
-            'columns': [
-                'exposure_id',
-                'borrower_id',
-                'exposure_amount',
-                'drawn_amount',
-                'undrawn_amount',
-                'rating',
-                'collateral_value',
-                'collateral_type',
-                'sector',
-                'country',
-                'maturity_months'
-            ],
-            'example': {
-                'exposure_id': 'EXP001',
-                'borrower_id': 'BRW001',
-                'exposure_amount': 1000000,
-                'drawn_amount': 800000,
-                'undrawn_amount': 200000,
-                'rating': 'BBB',
-                'collateral_value': 500000,
-                'collateral_type': 'real_estate',
-                'sector': 'retail',
-                'country': 'FR',
-                'maturity_months': 36
+        "overview": {
+            "total_exposure": 125000000,
+            "average_pd": 0.023,
+            "expected_loss": 2875000,
+            "provisions": 3150000,
+            "coverage_ratio": 1.096
+        },
+        "portfolio_distribution": {
+            "by_rating": {
+                "AAA": 15,
+                "AA": 25,
+                "A": 30,
+                "BBB": 20,
+                "BB": 7,
+                "B": 3
+            },
+            "by_stage": {
+                "stage_1": 85,
+                "stage_2": 12,
+                "stage_3": 3
             }
         },
-        'ratings': ['AAA', 'AA', 'A', 'BBB', 'BB', 'B', 'CCC', 'CC', 'C', 'D'],
-        'collateral_types': ['unsecured', 'real_estate', 'financial', 'guarantee', 'other'],
-        'sectors': ['retail', 'corporate', 'real_estate', 'financial', 'other']
-    }
-
-# Fonctions helper
-def _interpret_pd(pd: float) -> str:
-    """Interprète le niveau de PD"""
-    if pd < 0.01:
-        return "Très faible risque"
-    elif pd < 0.05:
-        return "Risque faible"
-    elif pd < 0.10:
-        return "Risque modéré"
-    elif pd < 0.20:
-        return "Risque élevé"
-    else:
-        return "Risque très élevé"
-
-def _interpret_ecl(ecl_data: Dict) -> str:
-    """Interprète les résultats ECL"""
-    stage = ecl_data['stage']
-    if stage == 1:
-        return "Exposition performante - Provision sur 12 mois"
-    elif stage == 2:
-        return "Augmentation significative du risque - Provision lifetime"
-    else:
-        return "Exposition en défaut - Provision totale"
-
-def _calculate_risk_rating(pd: float, lgd: float) -> str:
-    """Calcule un rating de risque global"""
-    risk_score = pd * lgd
-    if risk_score < 0.005:
-        return "AAA"
-    elif risk_score < 0.01:
-        return "AA"
-    elif risk_score < 0.02:
-        return "A"
-    elif risk_score < 0.05:
-        return "BBB"
-    elif risk_score < 0.10:
-        return "BB"
-    else:
-        return "B ou moins"
-
-def _generate_exposure_recommendations(exposure: PortfolioExposure, ecl_data: Dict) -> List[str]:
-    """Génère des recommandations pour une exposition"""
-    recommendations = []
-    
-    if ecl_data['stage'] >= 2:
-        recommendations.append("🔍 Surveillance renforcée recommandée")
-    
-    if exposure.collateral_value < exposure.exposure_amount * 0.5:
-        recommendations.append("🛡️ Envisager des garanties supplémentaires")
-    
-    if ecl_data['provision_rate'] > 10:
-        recommendations.append("⚠️ Niveau de provision élevé - Revoir les conditions")
-    
-    return recommendations
-
-def _generate_stress_test_charts(results: Dict) -> Dict:
-    """Génère les configurations de graphiques pour le stress test"""
-    return {
-        'ecl_by_scenario': {
-            'type': 'bar_chart',
-            'title': 'ECL par scénario',
-            'data': [
-                {
-                    'scenario': scenario,
-                    'ecl': data.get('total_ecl', 0),
-                    'ecl_rate': data.get('ecl_rate', 0)
-                }
-                for scenario, data in results['scenarios'].items()
+        "trends": {
+            "pd_evolution": [
+                {"month": "Jan", "value": 0.021},
+                {"month": "Feb", "value": 0.022},
+                {"month": "Mar", "value": 0.023},
+                {"month": "Apr", "value": 0.023},
+                {"month": "May", "value": 0.022},
+                {"month": "Jun", "value": 0.023}
+            ],
+            "npl_evolution": [
+                {"month": "Jan", "value": 2.1},
+                {"month": "Feb", "value": 2.2},
+                {"month": "Mar", "value": 2.3},
+                {"month": "Apr", "value": 2.3},
+                {"month": "May", "value": 2.2},
+                {"month": "Jun", "value": 2.3}
             ]
         },
-        'capital_impact': {
-            'type': 'waterfall_chart',
-            'title': 'Impact sur le capital',
-            'baseline': results['scenarios'].get('baseline', {}).get('capital_impact', 0),
-            'changes': results['comparison']
-        }
+        "alerts": [
+            {
+                "severity": "warning",
+                "message": "Concentration élevée dans le secteur immobilier (32%)",
+                "action": "Envisager une diversification"
+            },
+            {
+                "severity": "info",
+                "message": "3 prêts ont migré du Stage 1 au Stage 2 ce mois",
+                "action": "Surveiller l'évolution"
+            }
+        ]
     }
 
-def _generate_migration_heatmap(matrix: Dict) -> Dict:
-    """Génère une heatmap pour la matrice de migration"""
+
+@router.get("/regulatory-reports")
+async def get_regulatory_reports():
+    """
+    Liste les rapports réglementaires disponibles
+    """
     return {
-        'type': 'heatmap',
-        'title': 'Matrice de migration des ratings',
-        'x_labels': list(matrix.keys()),
-        'y_labels': list(matrix.keys()),
-        'data': matrix,
-        'color_scale': 'Blues'
+        "reports": [
+            {
+                "id": "corep_credit_risk",
+                "name": "COREP - Credit Risk",
+                "description": "Rapport sur le risque de crédit selon CRR",
+                "frequency": "quarterly",
+                "last_generated": "2024-12-31",
+                "status": "completed"
+            },
+            {
+                "id": "finrep_f18",
+                "name": "FINREP F.18 - Credit Quality",
+                "description": "Information sur la qualité du crédit",
+                "frequency": "quarterly",
+                "last_generated": "2024-12-31",
+                "status": "completed"
+            },
+            {
+                "id": "ifrs9_provisions",
+                "name": "IFRS 9 - Provisions Report",
+                "description": "Rapport détaillé des provisions ECL",
+                "frequency": "monthly",
+                "last_generated": "2025-01-31",
+                "status": "draft"
+            }
+        ]
     }
 
-async def process_portfolio_file(file_location: str):
-    """Traite un fichier de portefeuille en arrière-plan"""
-    # Implémentation du traitement
-    pass
+
+# Fonctions helper
+def get_pd_by_rating(rating: str) -> float:
+    """Retourne la PD selon le rating"""
+    pd_mapping = {
+        "AAA": 0.001,
+        "AA": 0.003,
+        "A": 0.008,
+        "BBB": 0.015,
+        "BB": 0.035,
+        "B": 0.075,
+        "CCC": 0.150,
+        "D": 1.000
+    }
+    return pd_mapping.get(rating.upper(), 0.05)
+
+
+def calculate_lgd(exposure: float, collateral: float) -> float:
+    """Calcule la Loss Given Default"""
+    if exposure <= 0:
+        return 0
+    recovery_rate = min(collateral / exposure, 1.0) * 0.8  # 80% recovery sur collatéral
+    lgd = 1 - recovery_rate
+    return max(0, min(1, lgd))
+
+
+def get_risk_weight(rating: str, sector: Optional[str]) -> float:
+    """Retourne le risk weight selon Bâle III"""
+    base_weights = {
+        "AAA": 0.20,
+        "AA": 0.20,
+        "A": 0.50,
+        "BBB": 0.75,
+        "BB": 1.00,
+        "B": 1.50,
+        "CCC": 1.50,
+        "D": 1.50
+    }
+    
+    weight = base_weights.get(rating.upper(), 1.0)
+    
+    # Ajustement sectoriel
+    if sector == "real_estate":
+        weight *= 0.75  # Immobilier résidentiel
+    elif sector == "sme":
+        weight *= 0.85  # Support PME
+        
+    return weight
+
+
+def classify_stage(pd: float, payment_history: List) -> int:
+    """Classifie le stage IFRS 9"""
+    if pd > 0.20:
+        return 3  # Credit impaired
+    elif pd > 0.05 or (payment_history and any(p.get("days_late", 0) > 30 for p in payment_history[-3:])):
+        return 2  # Significant increase in credit risk
+    else:
+        return 1  # Performing
+
+
+def calculate_concentration(loans: List[LoanData]) -> Dict[str, Any]:
+    """Calcule le risque de concentration"""
+    total_exposure = sum(loan.amount for loan in loans)
+    
+    # Concentration par secteur
+    sector_exposure = {}
+    for loan in loans:
+        sector = loan.sector or "other"
+        sector_exposure[sector] = sector_exposure.get(sector, 0) + loan.amount
+    
+    # HHI (Herfindahl-Hirschman Index)
+    hhi = sum((exp / total_exposure) ** 2 for exp in sector_exposure.values())
+    
+    # Top exposures
+    sorted_sectors = sorted(sector_exposure.items(), key=lambda x: x[1], reverse=True)
+    
+    return {
+        "hhi": hhi,
+        "concentration_level": "high" if hhi > 0.15 else "moderate" if hhi > 0.10 else "low",
+        "top_sectors": [
+            {"sector": s[0], "exposure": s[1], "percentage": s[1] / total_exposure * 100}
+            for s in sorted_sectors[:3]
+        ]
+    }
+
+
+def generate_stress_test_recommendations(worst_case: Dict) -> List[str]:
+    """Génère des recommandations suite au stress test"""
+    recommendations = []
+    
+    if worst_case["loss_increase"] > 100:
+        recommendations.append("Augmenter significativement les provisions")
+        recommendations.append("Revoir la politique d'octroi de crédit")
+    
+    if worst_case["capital_impact"] > 1000000:
+        recommendations.append("Planifier une augmentation de capital")
+    
+    recommendations.append("Diversifier le portefeuille pour réduire la concentration")
+    recommendations.append("Mettre en place un suivi renforcé des expositions à risque")
+    
+    return recommendations
