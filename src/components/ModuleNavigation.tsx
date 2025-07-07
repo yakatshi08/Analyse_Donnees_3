@@ -8,7 +8,7 @@ import { useStore } from '../store';
 import { useTranslation } from '../hooks/useTranslation';
 
 export const ModuleNavigation: React.FC = () => {
-  const { darkMode, selectedModule, setSelectedModule, selectedSector } = useStore();
+  const { darkMode, activeModule, setActiveModule, selectedSector } = useStore(); // ✅ MODIFIÉ : selectedModule -> activeModule
   const { t } = useTranslation();
 
   const navigationItems = [
@@ -23,25 +23,25 @@ export const ModuleNavigation: React.FC = () => {
       icon: Upload
     },
     {
-      id: 'banking',
+      id: 'banking-core', // ✅ MODIFIÉ : 'banking' -> 'banking-core'
       label: t('nav.bankingCore'),
       icon: Building2,
       sector: 'banking'
     },
     {
       id: 'credit-risk',
-      label: 'Credit Risk',
+      label: t('nav.creditRisk'), // ✅ MODIFIÉ : Utilise la traduction
       icon: AlertTriangle,
       sector: 'banking'
     },
     {
-      id: 'insurance',
+      id: 'insurance-core', // ✅ MODIFIÉ : 'insurance' -> 'insurance-core'
       label: t('nav.insuranceCore'),
       icon: Shield,
       sector: 'insurance'
     },
     {
-      id: 'copilot',
+      id: 'co-pilot', // ✅ MODIFIÉ : 'copilot' -> 'co-pilot'
       label: t('nav.coPilot'),
       icon: Bot
     },
@@ -82,9 +82,9 @@ export const ModuleNavigation: React.FC = () => {
           {filteredItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setSelectedModule(item.id)}
+              onClick={() => setActiveModule(item.id)} // ✅ MODIFIÉ : setSelectedModule -> setActiveModule
               className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
-                ${selectedModule === item.id
+                ${activeModule === item.id // ✅ MODIFIÉ : selectedModule -> activeModule
                   ? 'bg-indigo-600 text-white shadow-md'
                   : darkMode
                     ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
