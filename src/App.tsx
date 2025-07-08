@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { PIBicarsHeader } from './components/PIBicarsHeader';
 import { ModuleNavigation } from './components/ModuleNavigation';
 import { Dashboard } from './components/Dashboard';
@@ -6,17 +6,35 @@ import { DataImport } from './components/DataImport';
 import { BankingCore } from './components/BankingCore';
 import { InsuranceCore } from './components/InsuranceCore';
 import { CoPilotIA } from './components/CoPilotIA';
+import { CreditRiskModule } from './components/CreditRiskModule';
+import { AnalyticsMLModule } from './components/AnalyticsMLModule';
+import IntelligentHomepage from './pages/IntelligentHomepage'; // AJOUT
 import { useStore } from './store';
 import { useTranslation } from './hooks/useTranslation';
-import { CreditRiskModule } from './components/CreditRiskModule';
-import { AnalyticsMLModule } from './components/AnalyticsMLModule'; // AJOUT
 
 function App() {
-  const { darkMode, activeModule } = useStore();
+  const { 
+    darkMode, 
+    activeModule, 
+    setActiveModule, 
+    onboardingCompleted,
+    importedFileData 
+  } = useStore();
   const { t } = useTranslation();
+
+  // Redirection vers la page d'accueil si onboarding non complété
+  useEffect(() => {
+    if (!onboardingCompleted && activeModule !== 'home') {
+      setActiveModule('home');
+    }
+  }, [onboardingCompleted, activeModule, setActiveModule]);
 
   const renderActiveModule = () => {
     switch (activeModule) {
+      // AJOUT: Page d'accueil intelligente
+      case 'home':
+        return <IntelligentHomepage />;
+      
       case 'dashboard':
         return <Dashboard />;
       
@@ -35,7 +53,6 @@ function App() {
       case 'credit-risk':
         return <CreditRiskModule />;
       
-      // AJOUT: Nouveau module Analytics ML
       case 'analytics-ml':
         return <AnalyticsMLModule />;
       
@@ -88,23 +105,39 @@ function App() {
         );
       
       default:
-        return <Dashboard />;
+        // Si pas d'onboarding complété, afficher la page d'accueil
+        return !onboardingCompleted ? <IntelligentHomepage /> : <Dashboard />;
     }
   };
 
+  // Déterminer si on doit afficher le header et la navigation
+  const showNavigation = activeModule !== 'home' || onboardingCompleted;
+
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Header en haut */}
-      <PIBicarsHeader />
-      
-      {/* Navigation horizontale en dessous du header */}
-      <ModuleNavigation />
+      {/* Header et Navigation conditionnels */}
+      {showNavigation && (
+        <>
+          {/* Header en haut */}
+          <PIBicarsHeader />
+          
+          {/* Navigation horizontale en dessous du header */}
+          <ModuleNavigation />
+        </>
+      )}
       
       {/* Contenu principal */}
       <main className="flex-1">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          {renderActiveModule()}
-        </div>
+        {/* Container conditionnel pour la page d'accueil */}
+        {activeModule === 'home' && !onboardingCompleted ? (
+          // Page d'accueil sans padding pour un design full-screen
+          renderActiveModule()
+        ) : (
+          // Autres modules avec padding standard
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {renderActiveModule()}
+          </div>
+        )}
       </main>
     </div>
   );

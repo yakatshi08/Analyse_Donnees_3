@@ -2,16 +2,31 @@ import React from 'react';
 import { 
   LayoutDashboard, Building2, Shield, Bot, BarChart3, 
   AlertTriangle, FileText, Settings, Upload,
-  TrendingUp, Calculator, Brain // AJOUT de l'icône Brain
+  TrendingUp, Calculator, Brain, Home // AJOUT de l'icône Home
 } from 'lucide-react';
 import { useStore } from '../store';
 import { useTranslation } from '../hooks/useTranslation';
 
 export const ModuleNavigation: React.FC = () => {
-  const { darkMode, activeModule, setActiveModule, selectedSector } = useStore(); // ✅ MODIFIÉ : selectedModule -> activeModule
+  const { 
+    darkMode, 
+    activeModule, 
+    setActiveModule, 
+    selectedSector,
+    importedFileData, // AJOUT pour gérer le badge conditionnel
+    onboardingCompleted // AJOUT pour gérer l'état de l'onboarding
+  } = useStore();
   const { t } = useTranslation();
 
   const navigationItems = [
+    // AJOUT : Page d'accueil en premier
+    {
+      id: 'home',
+      label: t('nav.home', 'Accueil'),
+      icon: Home,
+      badge: !onboardingCompleted || !importedFileData ? 'NEW' : null,
+      badgeColor: 'bg-green-500'
+    },
     {
       id: 'dashboard',
       label: t('nav.dashboard'),
@@ -23,33 +38,32 @@ export const ModuleNavigation: React.FC = () => {
       icon: Upload
     },
     {
-      id: 'banking-core', // ✅ MODIFIÉ : 'banking' -> 'banking-core'
+      id: 'banking-core',
       label: t('nav.bankingCore'),
       icon: Building2,
       sector: 'banking'
     },
     {
       id: 'credit-risk',
-      label: t('nav.creditRisk'), // ✅ MODIFIÉ : Utilise la traduction
+      label: t('nav.creditRisk'),
       icon: AlertTriangle,
       sector: 'banking'
     },
     {
-      id: 'insurance-core', // ✅ MODIFIÉ : 'insurance' -> 'insurance-core'
+      id: 'insurance-core',
       label: t('nav.insuranceCore'),
       icon: Shield,
       sector: 'insurance'
     },
     {
-      id: 'co-pilot', // ✅ MODIFIÉ : 'copilot' -> 'co-pilot'
+      id: 'co-pilot',
       label: t('nav.coPilot'),
       icon: Bot
     },
-    // REMPLACEMENT: Ancien analytics -> Nouveau analytics-ml
     {
-      id: 'analytics-ml', // ID modifié
-      label: t('nav.analyticsML'), // Label modifié
-      icon: Brain // Icône modifiée
+      id: 'analytics-ml',
+      label: t('nav.analyticsML'),
+      icon: Brain
     },
     {
       id: 'risk',
@@ -82,9 +96,9 @@ export const ModuleNavigation: React.FC = () => {
           {filteredItems.map((item) => (
             <button
               key={item.id}
-              onClick={() => setActiveModule(item.id)} // ✅ MODIFIÉ : setSelectedModule -> setActiveModule
-              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
-                ${activeModule === item.id // ✅ MODIFIÉ : selectedModule -> activeModule
+              onClick={() => setActiveModule(item.id)}
+              className={`flex items-center space-x-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap relative
+                ${activeModule === item.id
                   ? 'bg-indigo-600 text-white shadow-md'
                   : darkMode
                     ? 'text-gray-300 hover:bg-gray-700 hover:text-white'
@@ -93,6 +107,14 @@ export const ModuleNavigation: React.FC = () => {
             >
               <item.icon className="h-4 w-4" />
               <span>{item.label}</span>
+              
+              {/* AJOUT : Badge conditionnel */}
+              {item.badge && (
+                <span className={`ml-2 px-1.5 py-0.5 text-xs font-semibold rounded-full 
+                  ${item.badgeColor || 'bg-indigo-500'} text-white`}>
+                  {item.badge}
+                </span>
+              )}
             </button>
           ))}
         </div>
