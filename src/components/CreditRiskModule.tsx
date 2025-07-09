@@ -33,6 +33,7 @@ export const CreditRiskModule: React.FC = () => {
   // States
   const [activeTab, setActiveTab] = useState<TabType>('calculator');
   const [isCalculating, setIsCalculating] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false); // AJOUT: État pour l'infobulle
   
   // Calculator states
   const [rating, setRating] = useState('BBB');
@@ -332,27 +333,64 @@ export const CreditRiskModule: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Scénario */}
+                {/* Scénario - VERSION AMÉLIORÉE */}
                 <div>
-                  <label className={`block text-sm font-medium mb-2 ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
-                    Scénario
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {scenarios.map(s => (
-                      <button
-                        key={s}
-                        onClick={() => setScenario(s)}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors
-                          ${scenario === s
-                            ? 'bg-red-600 text-white'
-                            : darkMode
-                              ? 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                              : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                          }`}
-                      >
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </button>
-                    ))}
+                  <div className="flex items-center gap-2 mb-3">
+                    <label className={`block text-sm font-medium ${darkMode ? 'text-gray-300' : 'text-gray-700'}`}>
+                      Scénario
+                    </label>
+                    <div className="relative">
+                      <Info 
+                        className="h-4 w-4 text-gray-400 cursor-help"
+                        onMouseEnter={() => setShowTooltip(true)}
+                        onMouseLeave={() => setShowTooltip(false)}
+                      />
+                      {showTooltip && (
+                        <div className="absolute z-10 w-64 p-3 -top-2 left-6 bg-gray-800 border border-gray-700 rounded-lg shadow-lg">
+                          <div className="text-xs text-gray-300 space-y-2">
+                            <div><span className="font-semibold text-green-400">Baseline:</span> Scénario économique neutre</div>
+                            <div><span className="font-semibold text-orange-400">Adverse:</span> Scénario modérément négatif</div>
+                            <div><span className="font-semibold text-red-400">Severe:</span> Scénario de crise grave</div>
+                          </div>
+                          <div className="absolute -left-1 top-3 w-2 h-2 bg-gray-800 border-l border-t border-gray-700 transform rotate-45"></div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-center items-center gap-x-6 py-3">
+                    <button
+                      onClick={() => setScenario('baseline')}
+                      className={`px-8 py-3 rounded-lg font-medium transition-all duration-200
+                        ${scenario === 'baseline'
+                          ? 'bg-red-500 text-white ring-2 ring-offset-2 ring-offset-gray-800 ring-red-400 shadow-lg font-bold cursor-default transform scale-105'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:scale-105 hover:shadow-md'
+                        }`}
+                    >
+                      Baseline
+                    </button>
+                    
+                    <button
+                      onClick={() => setScenario('adverse')}
+                      className={`px-8 py-3 rounded-lg font-medium transition-all duration-200
+                        ${scenario === 'adverse'
+                          ? 'bg-orange-500 text-white ring-2 ring-offset-2 ring-offset-gray-800 ring-orange-400 shadow-lg font-bold cursor-default transform scale-105'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:scale-105 hover:shadow-md'
+                        }`}
+                    >
+                      Adverse
+                    </button>
+                    
+                    <button
+                      onClick={() => setScenario('severe')}
+                      className={`px-8 py-3 rounded-lg font-medium transition-all duration-200
+                        ${scenario === 'severe'
+                          ? 'bg-red-700 text-white ring-2 ring-offset-2 ring-offset-gray-800 ring-red-600 shadow-lg font-bold cursor-default transform scale-105'
+                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600 hover:scale-105 hover:shadow-md'
+                        }`}
+                    >
+                      Severe
+                    </button>
                   </div>
                 </div>
 

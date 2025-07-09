@@ -1,10 +1,18 @@
 import React, { useState } from 'react';
 import { 
   Shield, Calculator, FileCheck, Activity,
-  TrendingUp, AlertTriangle, PieChart, ArrowUp, ArrowDown, Info
+  TrendingUp, AlertTriangle, PieChart as PieChartIcon, 
+  ArrowUp, ArrowDown, Info
 } from 'lucide-react';
 import { useStore } from '../store';
 import { useTranslation } from '../hooks/useTranslation';
+import {
+  LineChart, Line, AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend,
+  ResponsiveContainer, PieChart, Pie, Cell, RadarChart,
+  RadarArea, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ReferenceLine
+} from 'recharts';
 
 export const InsuranceCore: React.FC = () => {
   const { darkMode } = useStore();
@@ -28,7 +36,7 @@ export const InsuranceCore: React.FC = () => {
       value: '94.2%',
       trend: '-2.1%',
       status: 'healthy',
-      icon: PieChart,
+      icon: PieChartIcon,
       color: 'blue',
       description: 'Loss Ratio + Expense Ratio'
     },
@@ -43,6 +51,32 @@ export const InsuranceCore: React.FC = () => {
       description: 'Claims / Premiums'
     }
   ];
+
+  // Données pour les graphiques d'assurance
+  const solvencyEvolution = [
+    { month: 'Jan', SCR: 175, MCR: 165, Combined: 96.5 },
+    { month: 'Fév', SCR: 178, MCR: 168, Combined: 95.8 },
+    { month: 'Mar', SCR: 180, MCR: 170, Combined: 95.2 },
+    { month: 'Avr', SCR: 182, MCR: 172, Combined: 94.8 },
+    { month: 'Mai', SCR: 183, MCR: 174, Combined: 94.5 },
+    { month: 'Jun', SCR: 185, MCR: 176, Combined: 94.2 }
+  ];
+
+  const riskBreakdown = [
+    { name: 'Market Risk', value: 180, percentage: 40 },
+    { name: 'Underwriting Risk', value: 150, percentage: 33 },
+    { name: 'Credit Risk', value: 120, percentage: 27 }
+  ];
+
+  const lossRatioData = [
+    { category: 'Motor', lossRatio: 65, expenseRatio: 28, combined: 93 },
+    { category: 'Property', lossRatio: 58, expenseRatio: 32, combined: 90 },
+    { category: 'Health', lossRatio: 70, expenseRatio: 25, combined: 95 },
+    { category: 'Life', lossRatio: 45, expenseRatio: 35, combined: 80 },
+    { category: 'Liability', lossRatio: 72, expenseRatio: 30, combined: 102 }
+  ];
+
+  const COLORS = ['#7C3AED', '#3B82F6', '#10B981', '#F59E0B', '#EF4444'];
 
   const modules = [
     {
@@ -198,6 +232,162 @@ export const InsuranceCore: React.FC = () => {
           </div>
         )}
         
+        {/* Section Graphiques - NOUVEAU */}
+        <div className="mb-8 grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Évolution Solvency II */}
+          <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              {t('insurance.evolution', 'Évolution Solvency II (6 mois)')}
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={solvencyEvolution}>
+                <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#E5E7EB'} />
+                <XAxis dataKey="month" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+                <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: darkMode ? '#1F2937' : '#FFFFFF',
+                    border: darkMode ? '1px solid #374151' : '1px solid #E5E7EB'
+                  }}
+                />
+                <Legend />
+                <Line
+                  type="monotone"
+                  dataKey="SCR"
+                  stroke="#7C3AED"
+                  strokeWidth={3}
+                  dot={{ fill: '#7C3AED' }}
+                  name="SCR Coverage %"
+                />
+                <Line
+                  type="monotone"
+                  dataKey="MCR"
+                  stroke="#3B82F6"
+                  strokeWidth={2}
+                  strokeDasharray="5 5"
+                  dot={{ fill: '#3B82F6' }}
+                  name="MCR Coverage %"
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Répartition des risques SCR */}
+          <div className={`rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+            <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+              {t('insurance.riskBreakdown', 'Répartition SCR par risque')}
+            </h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <PieChart>
+                <Pie
+                  data={riskBreakdown}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  label={({ name, percentage }) => `${name} ${percentage}%`}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="value"
+                >
+                  {riskBreakdown.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip formatter={(value) => `€${value}M`} />
+              </PieChart>
+            </ResponsiveContainer>
+            <div className="mt-4 flex justify-center space-x-4">
+              {riskBreakdown.map((item, index) => (
+                <div key={index} className="flex items-center text-sm">
+                  <div
+                    className="w-3 h-3 rounded-full mr-2"
+                    style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                  />
+                  <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>
+                    €{item.value}M
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Graphique Combined Ratio par branche */}
+        <div className={`mb-8 rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('insurance.ratiosByBranch', 'Combined Ratio par branche d\'activité')}
+          </h3>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={lossRatioData}>
+              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#E5E7EB'} />
+              <XAxis dataKey="category" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+              <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: darkMode ? '#1F2937' : '#FFFFFF',
+                  border: darkMode ? '1px solid #374151' : '1px solid #E5E7EB'
+                }}
+              />
+              <Legend />
+              <Bar dataKey="lossRatio" stackId="a" fill="#7C3AED" name="Loss Ratio %" />
+              <Bar dataKey="expenseRatio" stackId="a" fill="#3B82F6" name="Expense Ratio %" />
+              {/* Ligne de référence à 100% */}
+              <ReferenceLine y={100} stroke="#EF4444" strokeDasharray="3 3" />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="mt-4 flex items-center justify-center space-x-6 text-sm">
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-purple-600 rounded mr-2" />
+              <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Loss Ratio</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-4 h-4 bg-blue-600 rounded mr-2" />
+              <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Expense Ratio</span>
+            </div>
+            <div className="flex items-center">
+              <div className="w-0.5 h-4 bg-red-500 mr-2" />
+              <span className={darkMode ? 'text-gray-300' : 'text-gray-700'}>Seuil 100%</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Graphique tendance Combined Ratio */}
+        <div className={`mb-8 rounded-xl p-6 ${darkMode ? 'bg-gray-800' : 'bg-white'}`}>
+          <h3 className={`text-lg font-semibold mb-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+            {t('insurance.combinedTrend', 'Tendance Combined Ratio')}
+          </h3>
+          <ResponsiveContainer width="100%" height={200}>
+            <AreaChart data={solvencyEvolution}>
+              <CartesianGrid strokeDasharray="3 3" stroke={darkMode ? '#374151' : '#E5E7EB'} />
+              <XAxis dataKey="month" stroke={darkMode ? '#9CA3AF' : '#6B7280'} />
+              <YAxis stroke={darkMode ? '#9CA3AF' : '#6B7280'} domain={[90, 100]} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: darkMode ? '#1F2937' : '#FFFFFF',
+                  border: darkMode ? '1px solid #374151' : '1px solid #E5E7EB'
+                }}
+              />
+              <Area
+                type="monotone"
+                dataKey="Combined"
+                stroke="#10B981"
+                fill="#10B981"
+                fillOpacity={0.3}
+                strokeWidth={2}
+              />
+              {/* Ligne de profitabilité à 100% */}
+              <ReferenceLine y={100} stroke="#EF4444" strokeDasharray="3 3" />
+              {/* Zone de profitabilité */}
+              <ReferenceLine y={95} stroke="#10B981" strokeDasharray="2 2" />
+            </AreaChart>
+          </ResponsiveContainer>
+          <div className="mt-2 flex justify-center text-xs">
+            <span className={`${darkMode ? 'text-gray-400' : 'text-gray-600'}`}>
+              Zone verte : Combined Ratio {'<'} 95% (profitable)
+            </span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {modules.map((module, index) => {
             const Icon = module.icon;

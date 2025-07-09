@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { 
   Upload, FileText, Database, Brain, TrendingUp, 
   Shield, Users, ChevronRight, Check, AlertCircle,
-  Home, Sparkles 
+  Home, Sparkles, ArrowRight 
 } from 'lucide-react';
 import { useStore } from '../store';
 import { useTranslation } from '../hooks/useTranslation';
-// import { ImportAssistant } from '../services/ai/ImportAssistant'; // Commenté temporairement
+import { ImportAssistant } from '../services/ai/ImportAssistant';
 
 const IntelligentHomepage = () => {
   const { t } = useTranslation();
@@ -86,7 +86,213 @@ const IntelligentHomepage = () => {
     }
   };
 
+  // AJOUT: Fonction pour naviguer vers le Dashboard
+  const navigateToDashboard = () => {
+    console.log('🚀 Navigation vers le Dashboard - DÉBUT');
+    console.log('📊 setActiveModule existe ?', typeof setActiveModule);
+    
+    try {
+      // Si on a détecté des données de crédit, s'assurer qu'elles sont sauvegardées
+      if (analysisResult?.creditDetection?.isCreditData) {
+        console.log('💾 Sauvegarde des données crédit avant navigation');
+        const creditData = {
+          importedData: analysisResult.schema?.sampleData || [],
+          showCreditRisk: true,
+          analysisResult: analysisResult
+        };
+        localStorage.setItem('pendingCreditRiskData', JSON.stringify(creditData));
+      }
+      
+      // Marquer l'onboarding comme complété
+      console.log('📝 Appel setOnboardingCompleted');
+      setOnboardingCompleted(true);
+      
+      // Naviguer vers le dashboard
+      console.log('🎯 Appel setActiveModule("dashboard")');
+      setActiveModule('dashboard');
+      
+      // Vérification supplémentaire
+      setTimeout(() => {
+        console.log('✅ Module actif après navigation:', useStore.getState?.().activeModule);
+      }, 100);
+      
+    } catch (error) {
+      console.error('❌ Erreur dans navigateToDashboard:', error);
+      
+      // Fallback : essayer une navigation alternative
+      console.log('🔄 Tentative de fallback...');
+      window.location.hash = '#dashboard';
+    }
+    
+    console.log('🚀 Navigation vers le Dashboard - FIN');
+  };
+
+  // Analyse locale avec ImportAssistant
+  const analyzeFileLocally = async (file) => {
+    // Lecture du fichier pour l'analyse locale
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const content = e.target.result;
+        let data = [];
+        
+        // Parse selon le type de fichier
+        if (file.name.endsWith('.csv')) {
+          // Utiliser papaparse pour CSV
+          const Papa = await import('papaparse');
+          const parsed = Papa.parse(content, { 
+            header: true, 
+            dynamicTyping: true,
+            skipEmptyLines: true 
+          });
+          data = parsed.data;
+        } else if (file.name.endsWith('.json')) {
+          data = JSON.parse(content);
+        }
+        
+        // Analyse avec ImportAssistant
+        const schema = ImportAssistant.analyzeDataSchema(data);
+        
+        // DEBUG: Logs d'analyse
+        console.log('📊 Données parsées:', data);
+        console.log('📋 Colonnes détectées:', schema.columns);
+        
+        const sectorResult = ImportAssistant.detectSector(schema);
+        
+        // DEBUG: Log de détection secteur
+        console.log('🔍 Résultat détection secteur:', sectorResult);
+        
+        const qualityCheck = ImportAssistant.validateDataQuality(schema);
+        const dashboardConfig = ImportAssistant.generateDashboardConfig(
+          sectorResult, 
+          userProfile?.id, 
+          schema
+        );
+        
+        // Détection du portefeuille de crédit
+        const creditDetection = ImportAssistant.detectCreditPortfolio(schema);
+        
+        // DEBUG: Logs détaillés de détection crédit
+        console.log('💳 Détection crédit:', creditDetection);
+        console.log('💳 Credit columns trouvées:', creditDetection.creditColumns);
+        console.log('💳 Nombre de colonnes crédit:', creditDetection.creditColumns.length);
+        console.log('💳 Confiance crédit:', creditDetection.confidence);
+        console.log('💳 Is Credit Data?:', creditDetection.isCreditData);
+        console.log('💳 Action suggérée:', creditDetection.suggestedAction);
+        console.log('📊 TOUTES les colonnes du fichier:', schema.columns);
+        
+        // AJOUT: Forcer la détection pour les fichiers contenant des données de prêt
+        if (file.name.toLowerCase().includes('loan') || 
+            schema.columns.some(col => col.toLowerCase().includes('loan') || 
+                                      col.toLowerCase().includes('credit') ||
+                                      col.toLowerCase().includes('outstanding'))) {
+          console.log('⚡ Amélioration forcée de la détection crédit pour', file.name);
+          
+          const loanColumns = schema.columns.filter(col => 
+            col.toLowerCase().includes('loan') || 
+            col.toLowerCase().includes('amount') ||
+            col.toLowerCase().includes('rate') ||
+            col.toLowerCase().includes('outstanding') ||
+            col.toLowerCase().includes('balance')
+          );
+          
+          if (loanColumns.length >= 2) {
+            creditDetection.isCreditData = true;
+            creditDetection.confidence = 0.95;
+            creditDetection.creditColumns = loanColumns;
+            creditDetection.suggestedAction = `Portefeuille de crédit détecté avec ${loanColumns.length} colonnes. Voulez-vous lancer une analyse approfondie du risque de crédit ?`;
+            
+            console.log('✅ Détection crédit forcée:', {
+              colonnes: loanColumns,
+              confidence: creditDetection.confidence
+            });
+          }
+        }
+        
+        // TEMPORAIRE : Forcer la détection pour tester si nécessaire
+        if (schema.columns.some(col => col.toLowerCase().includes('loan')) && creditDetection.creditColumns.length > 0) {
+          console.log('⚡ Amélioration de la détection crédit');
+          creditDetection.isCreditData = true;
+          creditDetection.confidence = Math.max(0.8, creditDetection.confidence);
+        }
+        
+        setDetectedSector(sectorResult.sector);
+        setSelectedSector(sectorResult.sector);
+        setAnalysisResult({
+          schema,
+          sectorDetection: sectorResult,
+          suggestedKPIs: sectorResult.suggestedKPIs,
+          quality: qualityCheck,
+          dashboardConfig,
+          creditDetection
+        });
+        setGlobalAnalysisResult({
+          schema,
+          sectorDetection: sectorResult,
+          quality: qualityCheck,
+          dashboardConfig,
+          creditDetection
+        });
+        
+        // Auto-sélection du profil basé sur le secteur
+        if (sectorResult.sector === 'banking') {
+          handleProfileSelect('banker');
+        } else if (sectorResult.sector === 'insurance') {
+          handleProfileSelect('actuary');
+        }
+        
+        // Détection automatique du portefeuille de crédit
+        console.log('🔍 Test condition crédit: isCreditData=', creditDetection.isCreditData, 'confidence=', creditDetection.confidence);
+        
+        // Condition temporaire plus souple pour tester
+        if (creditDetection.creditColumns.length >= 2 || (creditDetection.isCreditData && creditDetection.confidence > 0.5)) {
+          console.log('✅ Condition crédit remplie ! Affichage de la notification...');
+          
+          setTimeout(() => {
+            console.log('⏰ Timeout déclenché, affichage de la confirmation...');
+            const confirmMessage = creditDetection.suggestedAction || 
+              `Nous avons détecté ${creditDetection.creditColumns.length} colonnes de crédit. Voulez-vous lancer une analyse de risque de crédit ?`;
+            
+            if (window.confirm(confirmMessage)) {
+              console.log('👍 Utilisateur a accepté, navigation vers Credit Risk...');
+              
+              // MODIFIÉ: Utiliser localStorage au lieu de navigate
+              localStorage.setItem('pendingCreditRiskData', JSON.stringify({
+                importedData: data,
+                showCreditRisk: true,
+                analysisResult: {
+                  schema,
+                  sectorDetection: sectorResult,
+                  quality: qualityCheck,
+                  dashboardConfig,
+                  creditDetection
+                }
+              }));
+              
+              // Naviguer vers le dashboard
+              setActiveModule('dashboard');
+              
+            } else {
+              console.log('👎 Utilisateur a refusé l\'analyse de crédit');
+            }
+          }, 1500);
+        } else {
+          console.log('❌ Condition crédit non remplie:', {
+            creditColumns: creditDetection.creditColumns.length,
+            isCreditData: creditDetection.isCreditData,
+            confidence: creditDetection.confidence
+          });
+        }
+      } catch (error) {
+        console.error('Erreur analyse locale:', error);
+      }
+    };
+    
+    reader.readAsText(file);
+  };
+
   const handleFile = async (file) => {
+    console.log('📁 handleFile appelé avec:', file.name);
     setImportedFile(file);
     setIsAnalyzing(true);
 
@@ -97,6 +303,13 @@ const IntelligentHomepage = () => {
       type: file.type
     });
 
+    // MODIFICATION : Forcer l'analyse locale directement
+    console.log('🔄 Utilisation de l\'analyse locale forcée');
+    await analyzeFileLocally(file);
+    setIsAnalyzing(false);
+    return;
+
+    /* COMMENTÉ TEMPORAIREMENT POUR FORCER L'ANALYSE LOCALE
     // Création du FormData pour l'upload
     const formData = new FormData();
     formData.append('file', file);
@@ -109,6 +322,7 @@ const IntelligentHomepage = () => {
       });
 
       const result = await response.json();
+      console.log('🌐 Réponse API:', result);
       
       if (result.success) {
         setAnalysisResult(result);
@@ -127,37 +341,36 @@ const IntelligentHomepage = () => {
         
         // Suggestions du Co-pilot basées sur l'analyse
         await updateCopilotSuggestions(result);
+        
+        // AJOUT: Vérifier si les données contiennent un portefeuille de crédit (API response)
+        if (result.creditDetection && result.creditDetection.isCreditData) {
+          setTimeout(() => {
+            const confirmMessage = result.creditDetection.suggestedAction || 
+              'Portefeuille de crédit détecté. Lancer l\'analyse de risque ?';
+            
+            if (window.confirm(confirmMessage)) {
+              // Stocker dans localStorage pour le dashboard
+              localStorage.setItem('pendingCreditRiskData', JSON.stringify({
+                importedData: result.data || [],
+                showCreditRisk: true,
+                analysisResult: result
+              }));
+              
+              // Naviguer vers le dashboard
+              setActiveModule('dashboard');
+            }
+          }, 1500);
+        }
       }
     } catch (error) {
       console.error('Erreur analyse fichier:', error);
-      // Utilisation de l'analyse locale en fallback (simplifiée pour l'instant)
-      simulateLocalAnalysis(file);
+      console.log('🔄 Utilisation de l\'analyse locale en fallback');
+      // Utilisation de l'analyse locale en fallback
+      analyzeFileLocally(file);
     } finally {
       setIsAnalyzing(false);
     }
-  };
-
-  // Analyse locale simplifiée (sans ImportAssistant pour l'instant)
-  const simulateLocalAnalysis = async (file) => {
-    // Simulation d'une analyse
-    setTimeout(() => {
-      const simulatedSector = file.name.toLowerCase().includes('insurance') ? 'insurance' : 'banking';
-      const simulatedResult = {
-        sectorDetection: {
-          sector: simulatedSector,
-          detectedPatterns: ['Données détectées', 'Analyse simulée'],
-          confidence: 0.85
-        },
-        suggestedKPIs: simulatedSector === 'banking' 
-          ? ['CET1 Ratio', 'LCR', 'NPL Ratio', 'ROE']
-          : ['Combined Ratio', 'SCR Coverage', 'Loss Ratio', 'Premium Growth']
-      };
-      
-      setDetectedSector(simulatedSector);
-      setSelectedSector(simulatedSector);
-      setAnalysisResult(simulatedResult);
-      setGlobalAnalysisResult(simulatedResult);
-    }, 1500);
+    */
   };
 
   const updateCopilotSuggestions = async (analysisResult) => {
@@ -225,6 +438,14 @@ const IntelligentHomepage = () => {
               <span className={`text-sm ${darkMode ? 'text-gray-300' : 'text-gray-600'}`}>
                 {t('homepage.welcome', 'Bienvenue dans votre espace d\'analyse')}
               </span>
+              {/* AJOUT: Bouton d'accès rapide au Dashboard dans le header */}
+              <button 
+                onClick={navigateToDashboard}
+                className="text-sm text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center space-x-1"
+              >
+                <span>Accéder au Dashboard</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
             </div>
           </div>
         </div>
@@ -393,7 +614,25 @@ const IntelligentHomepage = () => {
                         {t('homepage.suggestedKPIs', 'KPIs suggérés')}: {' '}
                         {analysisResult.suggestedKPIs?.slice(0, 3).join(', ')}...
                       </p>
+                      {/* Affichage de la détection de crédit */}
+                      {analysisResult.creditDetection?.creditColumns?.length > 0 && (
+                        <p className={`mt-1 ${darkMode ? 'text-amber-400' : 'text-amber-700'}`}>
+                          💡 {t('homepage.creditPortfolioDetected', 'Portefeuille de crédit détecté')} 
+                          ({analysisResult.creditDetection.creditColumns.length} colonnes, {Math.round(analysisResult.creditDetection.confidence * 100)}% confiance)
+                        </p>
+                      )}
                     </div>
+                  </div>
+                  
+                  {/* AJOUT: Bouton "Voir le Dashboard" après l'analyse */}
+                  <div className="mt-4 flex justify-center">
+                    <button
+                      onClick={navigateToDashboard}
+                      className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors flex items-center space-x-2"
+                    >
+                      <span>{t('homepage.viewDashboard', 'Voir le Dashboard')}</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
               )}
