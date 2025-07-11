@@ -1,6 +1,6 @@
 // src/modules/banking/credit-risk/index.tsx
 import React from 'react';
-import { CreditRiskModule } from '../../../components/CreditRiskModule';
+import CreditRiskModule from '../../../components/CreditRiskModule';
 
 // Export pour le widget du Dashboard
 export const CreditRiskDashboard = CreditRiskModule;

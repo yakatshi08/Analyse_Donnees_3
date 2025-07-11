@@ -8,7 +8,8 @@ import { InsuranceCore } from './components/InsuranceCore';
 import { CoPilotIA } from './components/CoPilotIA';
 import { CreditRiskModule } from './components/CreditRiskModule';
 import { AnalyticsMLModule } from './components/AnalyticsMLModule';
-import IntelligentHomepage from './pages/IntelligentHomepage'; // AJOUT
+import IntelligentHomepage from './pages/IntelligentHomepage';
+import ActuarialAnalytics from './components/insurance/ActuarialAnalytics';
 import { useStore } from './store';
 import { useTranslation } from './hooks/useTranslation';
 
@@ -29,33 +30,29 @@ function App() {
     }
   }, [onboardingCompleted, activeModule, setActiveModule]);
 
+  // AJOUT: Effet temporaire pour forcer le module actuariel
+  useEffect(() => {
+    setActiveModule('actuarial');
+  }, [setActiveModule]);
+
   const renderActiveModule = () => {
     switch (activeModule) {
-      // AJOUT: Page d'accueil intelligente
       case 'home':
         return <IntelligentHomepage />;
-      
       case 'dashboard':
         return <Dashboard />;
-      
       case 'import':
         return <DataImport />;
-      
       case 'banking-core':
         return <BankingCore />;
-      
       case 'insurance-core':
         return <InsuranceCore />;
-      
       case 'co-pilot':
         return <CoPilotIA />;
-      
       case 'credit-risk':
         return <CreditRiskModule />;
-      
       case 'analytics-ml':
         return <AnalyticsMLModule />;
-      
       case 'risk':
         return (
           <div className={`flex items-center justify-center h-96 
@@ -67,7 +64,6 @@ function App() {
             </div>
           </div>
         );
-      
       case 'reports':
         return (
           <div className={`flex items-center justify-center h-96 
@@ -79,7 +75,6 @@ function App() {
             </div>
           </div>
         );
-      
       case 'settings':
         return (
           <div className={`flex items-center justify-center h-96 
@@ -91,50 +86,29 @@ function App() {
             </div>
           </div>
         );
-      
       case 'actuarial':
-        return (
-          <div className={`flex items-center justify-center h-96 
-            ${darkMode ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-900'}`}>
-            <div className="text-center">
-              <h2 className="text-2xl font-bold mb-4">Actuarial Analytics</h2>
-              <p className="text-gray-500">Réserves techniques, Triangles de développement</p>
-              <p className="text-sm mt-2">Chain Ladder, Bornhuetter-Ferguson</p>
-            </div>
-          </div>
-        );
-      
+        return <ActuarialAnalytics />;
       default:
-        // Si pas d'onboarding complété, afficher la page d'accueil
         return !onboardingCompleted ? <IntelligentHomepage /> : <Dashboard />;
     }
   };
 
-  // Déterminer si on doit afficher le header et la navigation
   const showNavigation = activeModule !== 'home' || onboardingCompleted;
 
   return (
     <div className={`min-h-screen ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
-      {/* Header et Navigation conditionnels */}
       {showNavigation && (
         <>
-          {/* Header en haut */}
           <PIBicarsHeader />
-          
-          {/* Navigation horizontale en dessous du header */}
           <ModuleNavigation />
         </>
       )}
       
-      {/* Contenu principal */}
       <main className="flex-1">
-        {/* Container conditionnel pour la page d'accueil */}
         {activeModule === 'home' && !onboardingCompleted ? (
-          // Page d'accueil sans padding pour un design full-screen
           renderActiveModule()
         ) : (
-          // Autres modules avec padding standard
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className={activeModule === 'actuarial' ? '' : 'max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8'}>
             {renderActiveModule()}
           </div>
         )}
