@@ -10,6 +10,9 @@ import { CreditRiskModule } from './components/CreditRiskModule';
 import { AnalyticsMLModule } from './components/AnalyticsMLModule';
 import IntelligentHomepage from './pages/IntelligentHomepage';
 import ActuarialAnalytics from './components/insurance/ActuarialAnalytics';
+import ClaimsUnderwriting from './components/insurance/ClaimsUnderwriting'; // ✅ AJOUT ICI
+import LiquidityALM from './components/LiquidityALM'; // ✅ AJOUT IMPORT
+import MarketRisk from './components/MarketRisk'; // AJOUT IMPORT MARKET RISK
 import { useStore } from './store';
 import { useTranslation } from './hooks/useTranslation';
 
@@ -53,6 +56,12 @@ function App() {
         return <CreditRiskModule />;
       case 'analytics-ml':
         return <AnalyticsMLModule />;
+      case 'claims-underwriting':
+        return <ClaimsUnderwriting />; // ✅ AJOUT DU MODULE ICI
+      case 'liquidity-alm': // ✅ AJOUT CASE
+        return <LiquidityALM />;
+      case 'market-risk': // AJOUT CASE MARKET RISK
+        return <MarketRisk />;
       case 'risk':
         return (
           <div className={`flex items-center justify-center h-96 
